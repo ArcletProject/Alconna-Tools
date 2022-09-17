@@ -152,7 +152,7 @@ class AlconnaDecorate:
             help_string = self.__storage.get('func').__doc__
             command = Alconna(
                 command_name, self.__storage.get("main_args"),
-                options=self.__storage.get("options"),
+                *self.__storage.get("options"),
                 namespace=self.namespace,
                 meta=meta or CommandMeta(description=help_string or command_name)
             )
@@ -303,7 +303,7 @@ def _from_format(
                     _string_stack.clear()
             else:
                 main_args.__merge__(_arg)
-    return Alconna(command=command, options=options, main_args=main_args, meta=meta)
+    return Alconna(command, main_args, *options, meta=meta)
 
 
 def _from_string(command: str, *option: str, sep: str = " ", meta: Optional[CommandMeta] = None) -> "Alconna":
@@ -356,7 +356,7 @@ def _from_string(command: str, *option: str, sep: str = " ", meta: Optional[Comm
             _options[-1].action = store_value(eval(opt_action_value[0].rstrip(), {"true": True, "false": False}))
         _options[-1].help_text = opt_help_string[0]
     meta.fuzzy_match = True
-    return Alconna(headers=headers, main_args=_args, options=_options, meta=meta)
+    return Alconna(headers, _args, *_options, meta=meta)
 
 
 config_key = Literal["headers", "raise_exception", "description", "get_subcommand", "extra", "namespace", "command"]
@@ -431,9 +431,9 @@ class FuncMounter(AlconnaMounter):
             self.instance = func.__self__
             func = cast(FunctionType, partial(func, self.instance))
         super(FuncMounter, self).__init__(
-            headers=config.get("headers", None),
-            command=config.get("command", func_name),
-            main_args=_args,
+            config.get("headers", []),
+            config.get("command", func_name),
+            _args,
             meta=CommandMeta(
                 description=config.get("description", func.__doc__ or func_name),
                 raise_exception=config.get("raise_exception", True)
@@ -533,9 +533,9 @@ class ClassMounter(AlconnaMounter):
                 _options.append(Option(name, _opt_args, action=ArgAction(func), help_text=help_text))
             super().__init__(
                 config.get('command', mount_cls.__name__),
-                main_args=main_args,
-                headers=config.get('headers', None),
-                options=_options,
+                main_args,
+                config.get('headers', []),
+                *_options,
                 namespace=config.get('namespace', None),
                 meta=CommandMeta(
                     description=config.get('description', main_help_text),
@@ -553,9 +553,9 @@ class ClassMounter(AlconnaMounter):
                 _options.append(Option(name, args=_opt_args, action=ArgAction(func), help_text=help_text))
             super().__init__(
                 config.get('command', mount_cls.__name__),
-                headers=config.get('headers', None),
+                config.get('headers', []),
+                *_options,
                 namespace=config.get('namespace', None),
-                options=_options,
                 meta=CommandMeta(
                     description=config.get('description', main_help_text),
                     raise_exception=config.get('raise_exception', True)
@@ -587,9 +587,9 @@ class ModuleMounter(AlconnaMounter):
             _options.append(Option(name, args=_opt_args, action=ArgAction(func), help_text=help_text))
         super().__init__(
             config.get('command', module.__name__),
-            headers=config.get('headers', None),
+            config.get('headers', []),
+            *_options,
             namespace=config.get('namespace', None),
-            options=_options,
             meta=CommandMeta(
                 description=config.get("description", module.__doc__ or module.__name__),
                 raise_exception=config.get('raise_exception', True)
@@ -639,9 +639,9 @@ class ObjectMounter(AlconnaMounter):
             main_action = _InstanceAction(lambda: None)
             super().__init__(
                 config.get('command', obj_name),
-                main_args=main_args,
-                headers=config.get('headers', None),
-                options=_options,
+                main_args,
+                config.get('headers', []),
+                *_options,
                 meta=CommandMeta(
                     description=config.get('description', main_help_text),
                     raise_exception=config.get('raise_exception', True)
@@ -652,8 +652,8 @@ class ObjectMounter(AlconnaMounter):
         else:
             super().__init__(
                 config.get('command', obj_name),
-                headers=config.get('headers', None),
-                options=_options,
+                config.get('headers', []),
+                *_options,
                 namespace=config.get('namespace', None),
                 meta=CommandMeta(
                     description=config.get('description', main_help_text),
@@ -710,7 +710,7 @@ def delegate(cls: Type) -> Alconna:
             _options.append(attr)
         elif name.startswith('prefix'):
             _headers.extend(attr if isinstance(attr, (list, tuple)) else [attr])
-    return Alconna(cls.__name__, _main_args, _headers, _options, meta=CommandMeta(description=_help))
+    return Alconna(cls.__name__, _main_args, _headers, *_options, meta=CommandMeta(description=_help))
 
 
 def _argument(
