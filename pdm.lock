@@ -1,10 +1,10 @@
 [[package]]
 name = "arclet-alconna"
-version = "1.2.0.7"
+version = "1.3.0"
 requires_python = ">=3.8"
 summary = "A High-performance, Generality, Humane Command Line Arguments Parser Library."
 dependencies = [
-    "nepattern~=0.1.2",
+    "nepattern>=0.2.0",
     "typing-extensions~=4.3.0",
 ]
 
@@ -33,7 +33,7 @@ summary = "iniconfig: brain-dead simple config-ini parsing"
 
 [[package]]
 name = "nepattern"
-version = "0.1.2"
+version = "0.2.1"
 requires_python = ">=3.8"
 summary = "a complex pattern, support typing"
 dependencies = [
@@ -96,12 +96,12 @@ summary = "Backported and Experimental Type Hints for Python 3.7+"
 
 [metadata]
 lock_version = "4.0"
-content_hash = "sha256:b1e345c4d8e792194165301ca286213a3ca6761a41b8768f38f49ecfd25a815f"
+content_hash = "sha256:25df4f23f3497055620d11cf3b130807bd123b371b46721eb632b59c7f42abf9"
 
 [metadata.files]
-"arclet-alconna 1.2.0.7" = [
-    {url = "https://files.pythonhosted.org/packages/0b/09/449cc29e28018baeeff8fc5c14096dc28bb4a03edef51335875bb4342e7b/arclet-alconna-1.2.0.7.tar.gz", hash = "sha256:43720f95bec6a12bf027d7442eca360cac6d610fadbe19fc2d9355284442fb1e"},
-    {url = "https://files.pythonhosted.org/packages/0b/d4/90e038b4f6fae4c0b87e65ab1d3212d59b89225cfa285b2889a928892980/arclet_alconna-1.2.0.7-py3-none-any.whl", hash = "sha256:b6c6149bb42a34b4354fbbb19b1544700ce5643b731f2dbf551f500154889840"},
+"arclet-alconna 1.3.0" = [
+    {url = "https://files.pythonhosted.org/packages/5c/a9/812eab9c257a901acc3217a606164d2d39382bd5d1cb49d740f7104d45dc/arclet_alconna-1.3.0-py3-none-any.whl", hash = "sha256:b3be3ee26e00a4724bdf5c9ab5a99209db1f3bbde96a5ef23f4d3d83b724b58d"},
+    {url = "https://files.pythonhosted.org/packages/96/38/8063b898a98e333f7ed32bc9daaa15d8c373964f87c281b37528f962389f/arclet-alconna-1.3.0.tar.gz", hash = "sha256:993ed46147143f89a81eb6de13718ef31d140d8ebd01c8c4c1bdfad79f004d01"},
 ]
 "attrs 22.1.0" = [
     {url = "https://files.pythonhosted.org/packages/1a/cb/c4ffeb41e7137b23755a45e1bfec9cbb76ecf51874c6f1d113984ecaa32c/attrs-22.1.0.tar.gz", hash = "sha256:29adc2665447e5191d0e7c568fde78b21f9672d344281d0c6e1ab085429b22b6"},
@@ -167,9 +167,9 @@ content_hash = "sha256:b1e345c4d8e792194165301ca286213a3ca6761a41b8768f38f49ecfd
     {url = "https://files.pythonhosted.org/packages/23/a2/97899f6bd0e873fed3a7e67ae8d3a08b21799430fb4da15cfedf10d6e2c2/iniconfig-1.1.1.tar.gz", hash = "sha256:bc3af051d7d14b2ee5ef9969666def0cd1a000e121eaea580d4a313df4b37f32"},
     {url = "https://files.pythonhosted.org/packages/9b/dd/b3c12c6d707058fa947864b67f0c4e0c39ef8610988d7baea9578f3c48f3/iniconfig-1.1.1-py2.py3-none-any.whl", hash = "sha256:011e24c64b7f47f6ebd835bb12a743f2fbe9a26d4cecaa7f53bc4f35ee9da8b3"},
 ]
-"nepattern 0.1.2" = [
-    {url = "https://files.pythonhosted.org/packages/23/2e/a3b007a2214a9bb1de1680234bcfe63c29c89db12f88a5a966f746668e03/nepattern-0.1.2.tar.gz", hash = "sha256:a4a8dcc6e9be6f04a42b61e3c411a544cee85c3039279fc049d64748f656fc8e"},
-    {url = "https://files.pythonhosted.org/packages/2e/a8/b08824944f8d15de8a25841a56ff4b4def7fd813aa487db3aabc1d851658/nepattern-0.1.2-py3-none-any.whl", hash = "sha256:2cea4933c1ad25dd06558084ae1f73ef0c909eeb1e5f7a2ec27a86018b50c59f"},
+"nepattern 0.2.1" = [
+    {url = "https://files.pythonhosted.org/packages/5e/da/4b5f0a329c03120d989c47d596cd8afbae9b03d39475f5f295bccbe4021b/nepattern-0.2.1-py3-none-any.whl", hash = "sha256:7e600fee6895779444c6a8d003c9151043da60c9b7af6dc79326eb9e7d1ecc9e"},
+    {url = "https://files.pythonhosted.org/packages/da/08/5a44ea2a3c45562455c80ce8969366e5ada051c43a7a51f8b78e69243c40/nepattern-0.2.1.tar.gz", hash = "sha256:5fff03f620bde6e49cf3e868f96ed0552d0302aa75c464f23b5aeb1648d52660"},
 ]
 "packaging 21.3" = [
     {url = "https://files.pythonhosted.org/packages/05/8e/8de486cbd03baba4deef4142bd643a3e7bbe954a784dc1bb17142572d127/packaging-21.3-py3-none-any.whl", hash = "sha256:ef103e05f519cdc783ae24ea4e2e0f508a9c99b2d4969652eed6a2e1ea5bd522"},

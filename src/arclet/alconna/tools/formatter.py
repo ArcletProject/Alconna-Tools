@@ -3,10 +3,10 @@ from nepattern import Empty, AllParam, BasePattern
 
 from arclet.alconna.args import Args, ArgUnit
 from arclet.alconna.base import Subcommand, Option
-from arclet.alconna.components.output import AbstractTextFormatter, Trace
+from arclet.alconna.components.output import TextFormatter, Trace
 
 
-class ArgParserTextFormatter(AbstractTextFormatter):
+class ArgParserTextFormatter(TextFormatter):
     """
     argparser 风格的帮助文本格式化器
     """

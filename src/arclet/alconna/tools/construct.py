@@ -414,9 +414,9 @@ class AlconnaMounter(Alconna):
         ...
 
     def parse(self, message: DataCollection[Union[str, Any]], duplication: Optional[Any] = None,
-              static: bool = True):  # noqa
+              static: bool = True, interrupt: bool = False):  # noqa
         message = self._parse_action(message) or message
-        return super(AlconnaMounter, self).parse(message, duplication=duplication, static=static)
+        return super(AlconnaMounter, self).parse(message, duplication=duplication, static=static, interrupt=interrupt)
 
 
 class FuncMounter(AlconnaMounter):
