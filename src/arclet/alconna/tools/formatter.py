@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Union, Set
+from typing import List, Dict, Any, Union, Set, Tuple, Optional
 from nepattern import Empty, AllParam, BasePattern
 
 from arclet.alconna.args import Args, ArgUnit
@@ -10,6 +10,7 @@ class ArgParserTextFormatter(TextFormatter):
     """
     argparser 风格的帮助文本格式化器
     """
+
     def format(self, trace: Trace) -> str:
         parts = trace.body  # type: ignore
         sub_names = [i.name for i in filter(lambda x: isinstance(x, Subcommand), parts)]
@@ -91,3 +92,110 @@ class ArgParserTextFormatter(TextFormatter):
         option_help = "选项:\n" if option_string else ""
         subcommand_help = "子命令:\n" if subcommand_string else ""
         return f"{subcommand_help}{subcommand_string}\n{option_help}{option_string}\n"
+
+
+class MarkdownTextFormatter(TextFormatter):
+    def format(self, trace: Trace) -> str:
+        """help text的生成入口"""
+        """头部节点的描述"""
+        root, separators = trace.head, trace.separators
+        params, notice = self.parameters(trace.args)
+        notice_text = ("### 注释:\n    " + "\n    ".join(notice)) if notice else ""
+        help_string = f"{desc}" if (desc := root.get('description')) else ""
+        usage = f"\n{usage}" if (usage := root.get('usage')) else ""
+        example = f"\n## 使用示例:\n```shell\n{example}\n```" if (example := root.get('example')) else ""
+
+        headers = f"[{''.join(map(str, headers))}]" if (headers := root.get('header', [''])) != [''] else ""
+        cmd = f"{headers}{root.get('name', '')}"
+        command_string = (cmd or root['name']) + tuple(separators)[0]
+        body = self.body(trace.body)
+
+        return (
+            f"## {help_string}\n"
+            f"\n"
+            f"指令: **{command_string}{params}**\n"
+            f"{notice_text}"
+            f"{usage}\n"
+            f"{body}"
+            f"{example}"
+        )
+
+    def param(self, name: str, parameter: ArgUnit) -> str:
+        """对单个参数的描述"""
+        arg = f"&#91;{name}" if parameter['optional'] else f"&lt;{name}"
+        if not parameter['hidden']:
+            if parameter['value'] is AllParam:
+                return f"&lt;...{name}&gt;"
+            if not isinstance(parameter['value'], BasePattern) or parameter['value'].pattern != name:
+                arg += f"{'@' if parameter['kwonly'] else ':'}{parameter['value']}"
+            if parameter['field'].display is Empty:
+                arg += " = None"
+            elif parameter['field'].display is not None:
+                arg += f" = {parameter['field'].display} "
+        return f"{arg}&#93;" if parameter['optional'] else f"{arg}&gt;"
+
+    def parameters(self, args: Args) -> Tuple[str, Optional[List[str]]]:
+        """参数列表的描述"""
+        param_texts = [self.param(k, param) for k, param in args.argument.items()]
+        if len(args.separators) == 1:
+            separator = tuple(args.separators)[0]
+            res = separator.join(param_texts)
+        else:
+            res = " ".join(param_texts) + " splitBy:" + "/".join(args.separators)
+        notice = [(k, param['notice']) for k, param in args.argument.items() if param['notice']]
+        if not notice:
+            return res, None
+        return res, [f"{v[0]}: {v[1]}" for v in notice]
+
+    def part(self, node: Union[Subcommand, Option]) -> str:
+        """每个子节点的描述"""
+        if isinstance(node, Subcommand):
+            name = " ".join(node.requires) + (' ' if node.requires else '') + node.name
+            option_string = "\n".join(self.part(i) for i in node.options)
+            option_help = "### 该子命令内可用的选项有:\n " if option_string else ""
+            param, notice = self.parameters(node.args)
+            notice_text = (f"\n>\n> #### 注释:\n> " + "\n> ".join(notice)) if notice else ""
+            return (
+                f"- **{node.help_text}**\n"
+                f"> {name}{tuple(node.separators)[0]}"
+                f"{param}"
+                f"{notice_text}\n"
+                f"{option_help}{option_string}"
+            )
+        elif isinstance(node, Option):
+            alias_text = " ".join(node.requires) + (' ' if node.requires else '') + ", ".join(node.aliases)
+            param, notice = self.parameters(node.args)
+            notice_text = (f"\n>\n> #### 注释:\n> " + "\n> ".join(notice)) if notice else ""
+            return (
+                f"- **{node.help_text}**\n"
+                f"> {alias_text}{tuple(node.separators)[0]}"
+                f"{param}"
+                f"{notice_text}\n"
+            )
+        else:
+            raise TypeError(f"{node} is not a valid node")
+
+    def body(self, parts: List[Union[Option, Subcommand]]) -> str:
+        """子节点列表的描述"""
+        option_string = "\n".join(
+            self.part(opt) for opt in filter(lambda x: isinstance(x, Option), parts)
+            if opt.name not in {"--help", "--shortcut", "--comp"}
+        )
+        subcommand_string = "\n".join(self.part(sub) for sub in filter(lambda x: isinstance(x, Subcommand), parts))
+        option_help = "## 可用的选项有:\n" if option_string else ""
+        subcommand_help = "## 可用的子命令有:\n" if subcommand_string else ""
+        return f"{subcommand_help}{subcommand_string}{option_help}{option_string}"
+
+
+if __name__ == '__main__':
+    from arclet.alconna import Alconna, Args, Option, Subcommand
+
+    alc = Alconna(
+        "test1",
+        Args["foo#aaa", int],
+        Option("--foo", Args["bar;O", str]),
+        Option("--baz"),
+        Subcommand("--qux", [Option("aaa"), Option("bbb", Args["ccc#ddd", bool])]),
+        formatter_type=MarkdownTextFormatter
+    )
+    print(alc.parse("test1 --help"))
