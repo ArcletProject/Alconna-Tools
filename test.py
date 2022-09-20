@@ -9,7 +9,9 @@ from src.arclet.alconna.tools import (
     delegate,
     exclusion,
     cool_down,
-    simple_type
+    simple_type,
+    ArgParserTextFormatter,
+    MarkdownTextFormatter
 )
 
 
@@ -178,3 +180,29 @@ def test_cooldown():
         time.sleep(0.2)
         print(com3.parse(f"comp3 {i}"))
 
+
+def test_formatter():
+    from arclet.alconna import Alconna, Args, Option, Subcommand, CommandMeta
+
+    alc = Alconna(
+        "test1", ["!"], Args["foo#3322", int],
+        Option("--foo", Args["bar;O", str]),
+        Option("aaa baz|bar|baf"),
+        Option("aaa fox"),
+        Option("aaa bbb fire"),
+        Subcommand("--qux", [Option("aaa"), Option("bbb", Args["ccc#ddd", bool])]),
+        formatter_type=MarkdownTextFormatter,
+        meta=CommandMeta("text1111", "text2222", "text3333")
+    )
+    alc.parse("!test1 bbb --help")
+    alc1 = Alconna(
+        "test2", ["!"], Args["foo#3322", int],
+        Option("--foo", Args["bar;O", str]),
+        Option("aaa baz|bar|baf"),
+        Option("aaa fox"),
+        Option("aaa bbb fire"),
+        Subcommand("--qux", [Option("aaa"), Option("bbb", Args["ccc#ddd", bool])], Args["a"]),
+        formatter_type=ArgParserTextFormatter,
+        meta=CommandMeta("text1111", "text2222", "text3333")
+    )
+    alc1.parse("!test2 bbb --help")
