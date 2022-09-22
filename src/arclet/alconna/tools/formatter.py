@@ -208,13 +208,14 @@ class MarkdownTextFormatter(TextFormatter):
             option_string = "\n".join(self.part(i) for i in node.options)
             option_help = "### 该子命令内可用的选项有:\n " if option_string else ""
             param, notice = self.parameters(node.args)
+            help_text = "> Unknown" if node.help_text == node.dest else f"> {node.help_text}"
             notice_text = (
                 (f"\n>\n> #### 注释:\n> " + "\n> ".join(notice)) if notice else ""
             )
             return (
                 f"- **{name + (tuple(node.separators)[0] if param else '')}"
                 f"{param}**\n"
-                f"> {node.help_text}"
+                f"{help_text}"
                 f"{notice_text}\n"
                 f"{option_help}{option_string}"
             )
@@ -224,10 +225,11 @@ class MarkdownTextFormatter(TextFormatter):
                 + (" " if node.requires else "")
                 + (
                     f"&#91;{'|'.join(node.aliases)}&#93;"
-                    if len(node.aliases) > 2
+                    if len(node.aliases) >= 2
                     else "".join(node.aliases)
                 )
             )
+            help_text = "> Unknown" if node.help_text == node.dest else f"> {node.help_text}"
             param, notice = self.parameters(node.args)
             notice_text = (
                 (f"\n>\n> #### 注释:\n> " + "\n> ".join(notice)) if notice else ""
@@ -235,7 +237,7 @@ class MarkdownTextFormatter(TextFormatter):
             return (
                 f"- **{alias_text + (tuple(node.separators)[0] if param else '')}"
                 f"{param}**\n"
-                f"> {node.help_text}"
+                f"{help_text}"
                 f"{notice_text}\n"
             )
         else:
