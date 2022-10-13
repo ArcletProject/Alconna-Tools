@@ -53,7 +53,7 @@ class ObjectPattern(BasePattern):
                     anno = BasePattern(
                         model=PatternModel.TYPE_CONVERT,
                         origin=anno,
-                        converter=lambda x: suppliers[name](x),
+                        converter=lambda _, x: suppliers[name](x),
                     )
                 elif len(_s_sig.parameters) == 0 or (
                     len(_s_sig.parameters) == 1 and inspect.ismethod(suppliers[name])
