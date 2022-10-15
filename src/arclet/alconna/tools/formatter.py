@@ -49,7 +49,7 @@ class ArgParserTextFormatter(TextFormatter):
                 arg += (
                     f"@{parameter['value']}"
                     if parameter["kwonly"]
-                    else f"/{parameter['value']}"
+                    else f":{parameter['value']}"
                 )
             if parameter["field"].display is Empty:
                 arg += "=None"
@@ -95,12 +95,12 @@ class ArgParserTextFormatter(TextFormatter):
         opt_description = []
         max_len = 1
         for opt in filter(
-            lambda x: isinstance(x, Option) and x.name != "--shortcut", parts
+            lambda x: isinstance(x, Option) and (x.name not in self.ignore_names or not x.nargs), parts
         ):
             alias_text = (
                 " ".join(opt.requires)
                 + (" " if opt.requires else "")
-                + ", ".join(opt.aliases)
+                + "/".join(opt.aliases)
             )
             options.append(
                 f"  {alias_text}{tuple(opt.separators)[0]}{self.parameters(opt.args)}"
@@ -248,7 +248,7 @@ class MarkdownTextFormatter(TextFormatter):
         option_string = "\n".join(
             self.part(opt)
             for opt in filter(lambda x: isinstance(x, Option), parts)
-            if opt.name not in {"--help", "--shortcut", "--comp"}
+            if opt.name not in self.ignore_names
         )
         subcommand_string = "\n".join(
             self.part(sub) for sub in filter(lambda x: isinstance(x, Subcommand), parts)
