@@ -1,7 +1,7 @@
-from typing import List, Dict, Any, Union, Set, Tuple, Optional
+from typing import List, Dict, Any, Union, Tuple, Optional
 from nepattern import Empty, AllParam, BasePattern
 
-from arclet.alconna.args import Args, ArgUnit
+from arclet.alconna.args import Args, Arg
 from arclet.alconna.base import Subcommand, Option
 from arclet.alconna.components.output import TextFormatter, Trace
 
@@ -15,75 +15,52 @@ class ArgParserTextFormatter(TextFormatter):
         parts = trace.body  # type: ignore
         sub_names = [i.name for i in filter(lambda x: isinstance(x, Subcommand), parts)]
         opt_names = [i.name for i in filter(lambda x: isinstance(x, Option), parts)]
-        sub_names = (
-            (
-                " ".join(f"[{i}]" for i in sub_names)
-                if len(sub_names) < 5
-                else "[COMMANDS]"
-            )
-            if sub_names
-            else ""
-        )
-
-        opt_names = (
-            (
-                " ".join(f"[{i}]" for i in opt_names)
-                if len(opt_names) < 6
-                else "[OPTIONS]"
-            )
-            if opt_names
-            else ""
-        )
-        topic = f"{trace.head['name']} {sub_names}{' ' if sub_names else ''}{opt_names}"
+        sub_names = f"{{{','.join(sub_names)}}}" if sub_names else ""
+        opt_names = (" ".join(f"[{i}]" for i in opt_names)) if opt_names else ""
+        topic = f"{trace.head['name']} {opt_names}\n {sub_names}"
         header = self.header(trace.head, trace.separators)
         param = self.parameters(trace.args)
         body = self.body(parts)
         return f"{topic}\n{header % (param, body)}"
 
-    def param(self, name: str, parameter: ArgUnit) -> str:
-        arg = f"[{name.upper()}" if parameter["optional"] else name.upper()
-        if not parameter["hidden"]:
-            if parameter["value"] is AllParam:
+    def param(self, parameter: Arg) -> str:
+        name = parameter.name
+        arg = f"[{name.upper()}" if parameter.optional else name.upper()
+        if not parameter.hidden:
+            if parameter.value is AllParam:
                 return f"{name.upper()}..."
-            if isinstance(parameter["value"], BasePattern):
-                arg += (
-                    f"@{parameter['value']}"
-                    if parameter["kwonly"]
-                    else f":{parameter['value']}"
-                )
-            if parameter["field"].display is Empty:
+            if isinstance(parameter.value, BasePattern):
+                arg += f":{parameter.value}"
+            if parameter.field.display is Empty:
                 arg += "=None"
-            elif parameter["field"].display is not None:
-                arg += f"={parameter['field'].display}"
-        return f"{arg}]" if parameter["optional"] else arg
+            elif parameter.field.display is not None:
+                arg += f"={parameter.field.display}"
+        return f"{arg}]" if parameter.optional else arg
 
     def parameters(self, args: Args) -> str:
-        param_texts = [self.param(k, param) for k, param in args.argument.items()]
-        if len(args.separators) == 1:
-            separator = tuple(args.separators)[0]
-            res = separator.join(param_texts)
-        else:
-            res = " ".join(param_texts) + ", USED SPLIT:" + "/".join(args.separators)
-        notice = [
-            (k, param["notice"])
-            for k, param in args.argument.items()
-            if param["notice"]
-        ]
-        if not notice:
-            return res
-        return f"{res}\n  内容:\n  " + "\n  ".join(f"{v[0]}: {v[1]}" for v in notice)
+        res = ""
+        for arg in args.argument:
+            if arg.name.startswith('_key_'):
+                continue
+            if len(arg.separators) == 1:
+                sep = ' ' if arg.separators[0] == ' ' else f' {arg.separators[0]!r} '
+            else:
+                sep = f"[{'|'.join(arg.separators)!r}]"
+            res += self.param(arg) + sep
+        notice = [(arg.name, arg.notice) for arg in args.argument if arg.notice]
+        return f"{res}\n  内容:\n  " + "\n  ".join(f"{v[0]}: {v[1]}" for v in notice) if notice else res
 
-    def header(self, root: Dict[str, Any], separators: Set[str]) -> str:
+    def header(self, root: Dict[str, Any], separators: Tuple[str, ...]) -> str:
         help_string = f"\n描述: {desc}\n" if (desc := root.get("description")) else ""
-        usage = f"\n用法:{usage}\n" if (usage := root.get("usage")) else ""
-        example = f"\n样例:{example}\n" if (example := root.get("example")) else ""
+        usage = f"\n用法: {usage}\n" if (usage := root.get("usage")) else ""
+        example = f"\n样例: {example}\n" if (example := root.get("example")) else ""
         header_text = (
-            f"({''.join(map(str, headers))})"
-            if (headers := root.get("header", [])) != []
+            f"[{''.join(map(str, headers))}]"
+            if (headers := root.get("header", [])) and headers != [""]
             else ""
         )
         cmd = f"{header_text}{root.get('name', '')}"
-        sep = tuple(separators)[0]
+        sep = separators[0]
         command_string = (cmd or root["name"]) + sep
         return f"\n命令: {command_string}%s{help_string}{usage}%s{example}"
 
@@ -98,9 +75,8 @@ class ArgParserTextFormatter(TextFormatter):
             lambda x: isinstance(x, Option) and (x.name not in self.ignore_names or not x.nargs), parts
         ):
             alias_text = (
-                " ".join(opt.requires)
-                + (" " if opt.requires else "")
-                + "/".join(opt.aliases)
+                (f'<{" ".join(opt.requires)}> ' if opt.requires else "")
+                + ", ".join(opt.aliases)
             )
             options.append(
                 f"  {alias_text}{tuple(opt.separators)[0]}{self.parameters(opt.args)}"
@@ -148,7 +124,7 @@ class MarkdownTextFormatter(TextFormatter):
 
         headers = (
             f"&#91;{''.join(map(str, headers))}&#93;"
-            if (headers := root.get("header", []))
+            if (headers := root.get("header", [])) and headers != [""]
             else ""
         )
         cmd = f"{headers}{root.get('name', '')}"
@@ -167,39 +143,34 @@ class MarkdownTextFormatter(TextFormatter):
             f"{example}"
         )
 
-    def param(self, name: str, parameter: ArgUnit) -> str:
+    def param(self, parameter: Arg) -> str:
         """对单个参数的描述"""
-        arg = f"&#91;{name}" if parameter["optional"] else f"&lt;{name}"
-        if not parameter["hidden"]:
-            if parameter["value"] is AllParam:
+        name = parameter.name
+        arg = f"&#91;{name}" if parameter.optional else f"&lt;{name}"
+        if not parameter.hidden:
+            if parameter.value is AllParam:
                 return f"&lt;...{name}&gt;"
-            if (
-                not isinstance(parameter["value"], BasePattern)
-                or parameter["value"].pattern != name
-            ):
-                arg += f"{'@' if parameter['kwonly'] else ':'}{parameter['value']}"
-            if parameter["field"].display is Empty:
+            if not isinstance(parameter.value, BasePattern) or parameter.value.pattern != name:
+                arg += f":{parameter.value}"
+            if parameter.field.display is Empty:
                 arg += " = None"
-            elif parameter["field"].display is not None:
-                arg += f" = {parameter['field'].display} "
-        return f"{arg}&#93;" if parameter["optional"] else f"{arg}&gt;"
+            elif parameter.field.display is not None:
+                arg += f" = {parameter.field.display} "
+        return f"{arg}&#93;" if parameter.optional else f"{arg}&gt;"
 
     def parameters(self, args: Args) -> Tuple[str, Optional[List[str]]]:
         """参数列表的描述"""
-        param_texts = [self.param(k, param) for k, param in args.argument.items()]
-        if len(args.separators) == 1:
-            separator = tuple(args.separators)[0]
-            res = separator.join(param_texts)
-        else:
-            res = " ".join(param_texts) + " splitBy:" + "/".join(args.separators)
-        notice = [
-            (k, param["notice"])
-            for k, param in args.argument.items()
-            if param["notice"]
-        ]
-        if not notice:
-            return res, None
-        return res, [f"{v[0]}: {v[1]}" for v in notice]
+        res = ""
+        for arg in args.argument:
+            if arg.name.startswith('_key_'):
+                continue
+            if len(arg.separators) == 1:
+                sep = ' ' if arg.separators[0] == ' ' else f' {arg.separators[0]!r} '
+            else:
+                sep = f"[{'|'.join(arg.separators)!r}]"
+            res += self.param(arg) + sep
+        notice = [(arg.name, arg.notice) for arg in args.argument if arg.notice]
+        return (res, [f"{v[0]}: {v[1]}" for v in notice]) if notice else (res, None)
 
     def part(self, node: Union[Subcommand, Option]) -> str:
         """每个子节点的描述"""

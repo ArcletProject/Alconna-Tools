@@ -5,7 +5,7 @@ from typing import Literal
 from arclet.alconna.components.behavior import ArpamarBehavior
 from arclet.alconna.exceptions import OutBoundsBehave
 from arclet.alconna.config import config
-from arclet.alconna.arpamar import Arpamar
+from arclet.alconna.arparma import Arparma
 
 
 def exclusion(target_path: str, other_path: str):
@@ -18,7 +18,7 @@ def exclusion(target_path: str, other_path: str):
     """
 
     class _EXCLUSION(ArpamarBehavior):
-        def operate(self, interface: "Arpamar"):
+        def operate(self, interface: "Arparma"):
             if interface.query(target_path) and interface.query(other_path):
                 raise OutBoundsBehave(
                     config.lang.behavior_exclude_matched.format(target=target_path, other=other_path)
@@ -39,7 +39,7 @@ def cool_down(seconds: float):
         def __init__(self):
             self.last_time = datetime.now()
 
-        def operate(self, interface: "Arpamar"):
+        def operate(self, interface: "Arparma"):
             current_time = datetime.now()
             if (current_time - self.last_time).total_seconds() < seconds:
                 raise OutBoundsBehave(config.lang.behavior_cooldown_matched)
@@ -59,7 +59,7 @@ def inclusion(*targets: str, flag: Literal["any", "all"] = "any"):
     """
 
     class _Inclusion(ArpamarBehavior):
-        def operate(self, interface: "Arpamar"):
+        def operate(self, interface: "Arparma"):
             if flag == "all":
                 for target in targets:
                     if not interface.query(target):

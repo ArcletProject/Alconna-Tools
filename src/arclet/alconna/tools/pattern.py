@@ -66,7 +66,7 @@ class ObjectPattern(BasePattern):
                         )
                     )
             self._names.append(name)
-            self._args.add_argument(name, value=anno, default=default)
+            self._args.add(name, value=anno, default=default)
         self.flag = flag
         if flag == "part":
             self._re_pattern = re.compile(
@@ -96,12 +96,10 @@ class ObjectPattern(BasePattern):
             raise MatchFailed(lang.type_error.format(target=input_.__class__))
         if not (mat := self._re_pattern.fullmatch(input_)):
             raise MatchFailed(lang.content_error.format(target=input_))
-        res = analyse_args(
-            self._args, list(mat.groupdict().values()), raise_exception=False
-        )
-        if not res:
+        if res := analyse_args(self._args, list(mat.groupdict().values()), raise_exception=False):
+            return self.origin(**res)
+        else:
             raise MatchFailed(lang.content_error.format(target=input_))
-        return self.origin(**res)
 
     def __call__(self, *args, **kwargs):
         return self.origin(*args, **kwargs)

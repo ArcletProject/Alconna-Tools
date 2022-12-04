@@ -164,7 +164,8 @@ def test_checker():
 def test_exclusion():
     com2 = Alconna(
         "comp2",
-        options=[Option("foo"), Option("bar")],
+        Option("foo"),
+        Option("bar"),
         behaviors=[exclusion(target_path="options.foo", other_path="options.bar")]
     )
     assert com2.parse("comp2 foo").matched is True
@@ -185,8 +186,8 @@ def test_formatter():
     from arclet.alconna import Alconna, Args, Option, Subcommand, CommandMeta
 
     alc = Alconna(
-        "test1", ["!"], Args["foo#3322", int],
-        Option("--foo", Args["bar;O", str]),
+        "test1", ["!"], Args["foo#abcd", int],
+        Option("--foo", Args["bar;?", str]),
         Option("aaa baz|bar|baf"),
         Option("aaa fox"),
         Option("aaa bbb fire"),
@@ -197,7 +198,7 @@ def test_formatter():
     alc.parse("!test1 bbb --help")
     alc1 = Alconna(
         "test2", ["!"], Args["foo#3322", int],
-        Option("--foo", Args["bar;O", str]),
+        Option("--foo", Args["bar;?", str]),
         Option("aaa baz|bar|baf"),
         Option("aaa fox"),
         Option("aaa bbb fire"),
