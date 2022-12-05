@@ -21,7 +21,7 @@ class ObjectPattern(BasePattern):
         self,
         origin: Type[TOrigin],
         limit: Tuple[str, ...] = (),
-        flag: Literal["urlget", "part", "json"] = "part",
+        flag: Literal["urlget", "part", "json", "space"] = "part",
         **suppliers: Callable,
     ):
         self._args = Args()
@@ -72,6 +72,10 @@ class ObjectPattern(BasePattern):
             self._re_pattern = re.compile(
                 ";".join(f"(?P<{i}>.+?)" for i in self._names)
             )
+        elif flag == "space":
+            self._re_pattern = re.compile(
+                "( )".join(f"(?P<{i}>.+?)" for i in self._names)
+            )
         elif flag == "urlget":
             self._re_pattern = re.compile(
                 "&".join(f"{i}=(?P<{i}>.+?)" for i in self._names)
@@ -100,9 +104,6 @@ class ObjectPattern(BasePattern):
             return self.origin(**res)
         else:
             raise MatchFailed(lang.content_error.format(target=input_))
-
-    def __call__(self, *args, **kwargs):
-        return self.origin(*args, **kwargs)
 
     def __eq__(self, other):
         return isinstance(other, ObjectPattern) and self.origin == other.origin
