@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from typing import Literal
-from arclet.alconna.components.behavior import ArpamarBehavior
+from arclet.alconna.components.behavior import ArparmaBehavior
 from arclet.alconna.exceptions import OutBoundsBehave
 from arclet.alconna.config import config
 from arclet.alconna.arparma import Arparma
@@ -17,7 +17,7 @@ def exclusion(target_path: str, other_path: str):
         other_path: 其他路径
     """
 
-    class _EXCLUSION(ArpamarBehavior):
+    class _EXCLUSION(ArparmaBehavior):
         def operate(self, interface: "Arparma"):
             if interface.query(target_path) and interface.query(other_path):
                 raise OutBoundsBehave(
@@ -35,7 +35,7 @@ def cool_down(seconds: float):
         seconds: 时间间隔
     """
 
-    class _CoolDown(ArpamarBehavior):
+    class _CoolDown(ArparmaBehavior):
         def __init__(self):
             self.last_time = datetime.now()
 
@@ -58,7 +58,7 @@ def inclusion(*targets: str, flag: Literal["any", "all"] = "any"):
         flag: 匹配方式, 可选值为"any"或"all", 默认为"any"
     """
 
-    class _Inclusion(ArpamarBehavior):
+    class _Inclusion(ArparmaBehavior):
         def operate(self, interface: "Arparma"):
             if flag == "all":
                 for target in targets:
