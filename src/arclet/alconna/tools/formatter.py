@@ -170,7 +170,7 @@ class MarkdownTextFormatter(TextFormatter):
                 sep = f"[{'|'.join(arg.separators)!r}]"
             res += self.param(arg) + sep
         notice = [(arg.name, arg.notice) for arg in args.argument if arg.notice]
-        return (res, [f"{v[0]}: {v[1]}" for v in notice]) if notice else (res, None)
+        return (res[:-1], [f"{v[0]}: {v[1]}" for v in notice]) if notice else (res, None)
 
     def part(self, node: Union[Subcommand, Option]) -> str:
         """每个子节点的描述"""
@@ -207,7 +207,7 @@ class MarkdownTextFormatter(TextFormatter):
             )
             return (
                 f"- **{alias_text + (tuple(node.separators)[0] if param else '')}"
-                f"{param}**\n"
+                f"{param.strip(' ')}**\n"
                 f"{help_text}"
                 f"{notice_text}\n"
             )
