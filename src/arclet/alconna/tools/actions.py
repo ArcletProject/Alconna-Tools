@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Literal
+from dataclasses import dataclass, field
 from arclet.alconna.components.behavior import ArparmaBehavior
 from arclet.alconna.exceptions import OutBoundsBehave
 from arclet.alconna.config import config
@@ -35,9 +36,9 @@ def cool_down(seconds: float):
         seconds: 时间间隔
     """
 
+    @dataclass(unsafe_hash=True)
     class _CoolDown(ArparmaBehavior):
-        def __init__(self):
-            self.last_time = datetime.now()
+        last_time: datetime = field(default_factory=lambda: datetime.now())
 
         def operate(self, interface: "Arparma"):
             current_time = datetime.now()

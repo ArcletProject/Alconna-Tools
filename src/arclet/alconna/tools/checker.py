@@ -19,18 +19,21 @@ def simple_type(raise_exception: bool = False):
                 param.extend([f"{k}=", v])
             if not (result := analyse_args(_args, param, raise_exception)):
                 return None
-            res_args = []
-            res_kwargs = {}
-            varargs = []
-            if '__kwargs__' in result:
-                res_kwargs, kw_key = result.pop('__kwargs__')
+            res_args, kwargs, kwonly, varargs, kw_key, var_key = [], {}, {}, [], None, None
+            if '$kwargs' in result:
+                res_kwargs, kw_key = result.pop('$kwargs')
                 result.pop(kw_key)
-            if '__varargs__' in result:
-                varargs, var_key = result.pop('__varargs__')
+            if '$varargs' in result:
+                varargs, var_key = result.pop('$varargs')
                 result.pop(var_key)
+            if '$kwonly' in result:
+                kwonly = result.pop('$kwonly')
+                for k in kwonly:
+                    result.pop(k)
             res_args.extend(iter(result.values()))
             res_args.extend(varargs)
-            return func(*res_args, **res_kwargs)  # type: ignore
+            addition_kwargs = {**kwonly, **kwargs}
+            return func(*res_args, **addition_kwargs)  # type: ignore
 
         return __wrapper__
 

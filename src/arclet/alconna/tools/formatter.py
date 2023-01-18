@@ -14,10 +14,10 @@ class ArgParserTextFormatter(TextFormatter):
     def format(self, trace: Trace) -> str:
         parts = trace.body  # type: ignore
         sub_names = [i.name for i in filter(lambda x: isinstance(x, Subcommand), parts)]
-        opt_names = [i.name for i in filter(lambda x: isinstance(x, Option), parts)]
+        opt_names = [min(i.aliases, key=len) for i in filter(lambda x: isinstance(x, Option), parts)]
         sub_names = f"{{{','.join(sub_names)}}}" if sub_names else ""
         opt_names = (" ".join(f"[{i}]" for i in opt_names)) if opt_names else ""
-        topic = f"{trace.head['name']} {opt_names}\n {sub_names}"
+        topic = f"命令: {trace.head['name']} {opt_names}\n {sub_names}"
         header = self.header(trace.head, trace.separators)
         param = self.parameters(trace.args)
         body = self.body(parts)
@@ -62,7 +62,7 @@ class ArgParserTextFormatter(TextFormatter):
         cmd = f"{header_text}{root.get('name', '')}"
         sep = separators[0]
         command_string = (cmd or root["name"]) + sep
-        return f"\n命令: {command_string}%s{help_string}{usage}%s{example}"
+        return f"\n{command_string}%s{help_string}{usage}%s{example}"
 
     def part(self, node: Union[Subcommand, Option]) -> str:
         ...
@@ -75,8 +75,8 @@ class ArgParserTextFormatter(TextFormatter):
             lambda x: isinstance(x, Option) and (x.name not in self.ignore_names or not x.nargs), parts
         ):
             alias_text = (
-                (f'<{" ".join(opt.requires)}> ' if opt.requires else "")
-                + ", ".join(opt.aliases)
+                (f'{{{" ".join(opt.requires)}}} ' if opt.requires else "")
+                + ", ".join(sorted(opt.aliases, key=len))
             )
             options.append(
                 f"  {alias_text}{tuple(opt.separators)[0]}{self.parameters(opt.args)}"
@@ -90,17 +90,17 @@ class ArgParserTextFormatter(TextFormatter):
             name = " ".join(sub.requires) + (" " if sub.requires else "") + sub.name
             args = self.parameters(sub.args)
             subcommands.append(
-                f"  {name}{tuple(sub.separators)[0]}{args}"
+                f"    {name}{tuple(sub.separators)[0]}{args}"
             )
             sub_topic = " ".join(f"[{i.name}]" for i in sub.options)  # type: ignore
             sub_description.append(f"{sub.help_text} {sub_topic}")
         if subcommands:
             max_len = max(max(map(lambda x: len(x), subcommands)), max_len)
         option_string = "\n".join(
-            f"{i.ljust(max_len)} {j}" for i, j in zip(options, opt_description)
+            f"{i.ljust(max_len)}    {j}" for i, j in zip(options, opt_description)
         )
         subcommand_string = "\n".join(
-            f"{i.ljust(max_len)} {j}" for i, j in zip(subcommands, sub_description)
+            f"{i.ljust(max_len)}    {j}" for i, j in zip(subcommands, sub_description)
         )
         option_help = "选项:\n" if option_string else ""
         subcommand_help = "子命令:\n" if subcommand_string else ""
@@ -170,7 +170,7 @@ class MarkdownTextFormatter(TextFormatter):
                 sep = f"[{'|'.join(arg.separators)!r}]"
             res += self.param(arg) + sep
         notice = [(arg.name, arg.notice) for arg in args.argument if arg.notice]
-        return (res[:-1], [f"{v[0]}: {v[1]}" for v in notice]) if notice else (res, None)
+        return (res[:-1], [f"{v[0]}: {v[1]}" for v in notice]) if notice else (res[:-1], None)
 
     def part(self, node: Union[Subcommand, Option]) -> str:
         """每个子节点的描述"""
@@ -227,3 +227,129 @@ class MarkdownTextFormatter(TextFormatter):
         option_help = "## 可用的选项有:\n" if option_string else ""
         subcommand_help = "## 可用的子命令有:\n" if subcommand_string else ""
         return f"{subcommand_help}{subcommand_string}{option_help}{option_string}"
+
+
+color_theme = {
+    "msg": ("magenta", "35"),
+    "warn": ("yellow", "33"),
+    "info": ("blue", "34"),
+    "error": ("red", "31"),
+    "primary": ("cyan", "36"),
+    "success": ("green", "32"),
+    "req": ("bold green", "1;32")
+}
+
+
+
+class _RichTextFormatter(TextFormatter):
+    csl_code: bool
+
+    def _convert(self, content: str, style: str):
+        if style not in color_theme:
+            return content
+        if self.csl_code:
+            return f"\x1b[{color_theme[style][1]}m{content}\x1b[0m"
+        content = content.replace("[", "\[")
+        return f"[{color_theme[style][0]}]{content}[/]"
+    def format(self, trace: Trace) -> str:
+        parts = trace.body  # type: ignore
+        sub_names = [i.name for i in filter(lambda x: isinstance(x, Subcommand), parts)]
+        opt_names = [min(i.aliases, key=len) for i in filter(lambda x: isinstance(x, Option), parts)]
+        sub_names = self._convert(f"{{{','.join(sub_names)}}}\n", "info") if sub_names else ""
+        opt_names = self._convert((" ".join(f"[{i}]" for i in opt_names)), 'info') if opt_names else ""
+        topic = f"{self._convert('命令:', 'warn')} {self._convert(trace.head['name'], 'msg')} {opt_names}\n {sub_names}"
+        header = self.header(trace.head, trace.separators)
+        param = self._convert(self.parameters(trace.args), "success")
+        body = self.body(parts)
+        return f"{topic}{header % (param, body)}"
+
+    def param(self, parameter: Arg) -> str:
+        name = parameter.name
+        arg = f"[{name.upper()}" if parameter.optional else name.upper()
+        if parameter.value is AllParam:
+            return f"{name.upper()}..."
+        if parameter.field.display is Empty:
+            arg += "=None"
+        elif parameter.field.display is not None:
+            arg += f"={parameter.field.display}"
+        return f"{arg}]" if parameter.optional else arg
+
+    def parameters(self, args: Args) -> str:
+        res = ""
+        for arg in args.argument:
+            if arg.name.startswith('_key_'):
+                continue
+            if len(arg.separators) == 1:
+                sep = ' ' if arg.separators[0] == ' ' else f' {arg.separators[0]!r} '
+            else:
+                sep = f"[{'|'.join(arg.separators)!r}]"
+            res += self.param(arg) + sep
+        notice = [(arg.name, arg.notice) for arg in args.argument if arg.notice]
+        return f"{res}\n  内容:\n  " + "\n  ".join(f"{v[0]}: {v[1]}" for v in notice) if notice else res
+
+    def header(self, root: Dict[str, Any], separators: Tuple[str, ...]) -> str:
+        help_string = f"\n{self._convert('描述:', 'warn')} {desc}\n" if (desc := root.get("description")) else ""
+        usage = f"\n{self._convert('用法:', 'warn')} {usage}\n" if (usage := root.get("usage")) else ""
+        example = f"\n{self._convert('样例:', 'warn')} {example}\n" if (example := root.get("example")) else ""
+        header_text = (
+            f"[{''.join(map(str, headers))}]"
+            if (headers := root.get("header", [])) and headers != [""]
+            else ""
+        )
+        cmd = f"{header_text}{root.get('name', '')}"
+        sep = separators[0]
+        command_string = self._convert((cmd or root["name"]) + sep, "success")
+        return f"\n{command_string}%s{help_string}{usage}%s{example}"
+
+    def body(self, parts: List[Union[Option, Subcommand]]) -> str:
+        options = []
+        opt_description = []
+        max_len = 1
+        for opt in filter(
+            lambda x: isinstance(x, Option) and (x.name not in self.ignore_names or not x.nargs), parts
+        ):
+            alias_text = (
+                (f'{{{" ".join(opt.requires)}}} ' if opt.requires else "")
+                + ", ".join(sorted(opt.aliases, key=len))
+            )
+            options.append(
+                self._convert(
+                    f"  {alias_text}{tuple(opt.separators)[0]}{self.parameters(opt.args)}",
+                    "primary"
+                )
+            )
+            opt_description.append(opt.help_text)
+        if options:
+            max_len = max(max(map(lambda x: len(x), options)), max_len)
+        subcommands = []
+        sub_description = []
+        for sub in filter(lambda x: isinstance(x, Subcommand), parts):
+            name = " ".join(sub.requires) + (" " if sub.requires else "") + sub.name
+            args = self.parameters(sub.args)
+            subcommands.append(
+                self._convert(
+                    f"    {name}{tuple(sub.separators)[0]}{args}",
+                    "primary"
+                )
+            )
+            sub_topic = " ".join(f"[{i.name}]" for i in sub.options)  # type: ignore
+            sub_description.append(f"{sub.help_text} {sub_topic}")
+        if subcommands:
+            max_len = max(max(map(lambda x: len(x), subcommands)), max_len)
+        option_string = "\n".join(
+            f"{i.ljust(max_len)}    {j}" for i, j in zip(options, opt_description)
+        )
+        subcommand_string = "\n".join(
+            f"{i.ljust(max_len)}    {j}" for i, j in zip(subcommands, sub_description)
+        )
+        option_help = f"{self._convert('选项:', 'warn')}\n" if option_string else ""
+        subcommand_help = f"{self._convert('子命令:', 'warn')}\n" if subcommand_string else ""
+        return f"{subcommand_help}{subcommand_string}\n{option_help}{option_string}\n"
+
+class RichTextFormatter(_RichTextFormatter):
+    """argparser 风格的帮助文本格式化器, 增加 rich 的颜色标记，可用 rich.console 打印"""
+    csl_code = False
+
+class RichConsoleFormatter(_RichTextFormatter):
+    """argparser 风格的帮助文本格式化器, 增加控制台颜色标记"""
+    csl_code = True

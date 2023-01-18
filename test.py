@@ -1,5 +1,5 @@
 from typing import Optional
-from arclet.alconna import Alconna, Args, Option
+from arclet.alconna import Alconna, Args, Option, Field
 from src.arclet.alconna.tools import (
     AlconnaString,
     AlconnaFormat,
@@ -191,7 +191,7 @@ def test_formatter():
         Option("aaa baz|bar|baf"),
         Option("aaa fox"),
         Option("aaa bbb fire"),
-        Subcommand("--qux", [Option("aaa"), Option("bbb", Args["ccc#ddd", bool])]),
+        Subcommand("--qux", Option("aaa"), Option("bbb", Args["ccc#ddd", bool])),
         formatter_type=MarkdownTextFormatter,
         meta=CommandMeta("text1111", "text2222", "text3333")
     )
@@ -202,8 +202,12 @@ def test_formatter():
         Option("aaa baz|bar|baf"),
         Option("aaa fox"),
         Option("aaa bbb fire"),
-        Subcommand("--qux", [Option("aaa"), Option("bbb", Args["ccc#ddd", bool])], Args["a"]),
+        Subcommand("--qux", Option("aaa"), Option("bbb", Args["ccc#ddd", bool]), Args["a"]),
         formatter_type=ArgParserTextFormatter,
         meta=CommandMeta("text1111", "text2222", "text3333")
     )
     alc1.parse("!test2 bbb --help")
+
+if __name__ == '__main__':
+    import pytest
+    pytest.main([__file__, "-vs"])

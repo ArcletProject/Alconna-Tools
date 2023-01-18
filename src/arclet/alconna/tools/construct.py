@@ -291,9 +291,9 @@ def _from_format(
             try:
                 _name, _requires = _string_stack[-1], _string_stack[:-1]
                 if isinstance(value, Option):
-                    options.append(Subcommand(_name, [value], requires=_requires))
-                elif isinstance(value, list):
                     options.append(Subcommand(_name, value, requires=_requires))
+                elif isinstance(value, list):
+                    options.append(Subcommand(_name, *value, requires=_requires))
                 elif isinstance(value, Args):
                     options.append(Option(_name, args=value, requires=_requires))
                 else:
@@ -465,12 +465,11 @@ class AlconnaMounter(Alconna):
         self,
         message: DataCollection[Union[str, Any]],
         duplication: Optional[Any] = None,
-        static: bool = True,
         interrupt: bool = False,
     ):  # noqa
         message = self._parse_action(message) or message
         return super(AlconnaMounter, self).parse(
-            message, duplication=duplication, interrupt=interrupt, static=static
+            message, duplication=duplication, interrupt=interrupt
         )
 
 
@@ -525,8 +524,8 @@ def visit_subcommand(obj: Any):
             sub_args = Args.from_callable(subcommand_cls.__init__)[0]
             sub = _MountSubcommand(
                 config.get("command", cls_name),
+                sub_args,
                 help_text=config.get("description", sub_help_text),
-                args=sub_args,
             )
             sub.sub_instance = subcommand_cls
 
