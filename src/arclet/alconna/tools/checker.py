@@ -1,8 +1,9 @@
-from typing_extensions import ParamSpec
-from typing import TypeVar, Callable, Optional
 from functools import wraps
-from arclet.alconna.args import Args
-from arclet.alconna.analysis.base import analyse_args
+from typing import Callable, Optional, TypeVar
+
+from arclet.alconna import Alconna, CommandMeta, Args
+from arclet.alconna.action import ArgAction
+from typing_extensions import ParamSpec
 
 T = TypeVar("T")
 P = ParamSpec("P")
@@ -10,30 +11,24 @@ P = ParamSpec("P")
 
 def simple_type(raise_exception: bool = False):
     def deco(func: Callable[P, T]) -> Callable[P, Optional[T]]:
-        _args, _ = Args.from_callable(func)
+        def inner(*args: P.args, **kwargs: P.kwargs):
+            return {"$func": func(*args, **kwargs)}
+        name: str = f"{id(func)}"
+        _cmd = Alconna(
+            name, Args.from_callable(func)[0],
+            action=ArgAction(inner), meta=CommandMeta(raise_exception=raise_exception)
+        )
 
         @wraps(func)
         def __wrapper__(*args: P.args, **kwargs: P.kwargs):
-            param = list(args)
+            param = [name, *args]
             for k, v in kwargs.items():
                 param.extend([f"{k}=", v])
-            if not (result := analyse_args(_args, param, raise_exception)):
-                return None
-            res_args, kwargs, kwonly, varargs, kw_key, var_key = [], {}, {}, [], None, None
-            if '$kwargs' in result:
-                res_kwargs, kw_key = result.pop('$kwargs')
-                result.pop(kw_key)
-            if '$varargs' in result:
-                varargs, var_key = result.pop('$varargs')
-                result.pop(var_key)
-            if '$kwonly' in result:
-                kwonly = result.pop('$kwonly')
-                for k in kwonly:
-                    result.pop(k)
-            res_args.extend(iter(result.values()))
-            res_args.extend(varargs)
-            addition_kwargs = {**kwonly, **kwargs}
-            return func(*res_args, **addition_kwargs)  # type: ignore
+            return (
+                result.main_args.get("$func", None)
+                if (result := _cmd.parse(param)).matched
+                else None
+            )
 
         return __wrapper__
 

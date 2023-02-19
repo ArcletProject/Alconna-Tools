@@ -1,61 +1,72 @@
-from asyncio import AbstractEventLoop
-import sys
-import re
+import asyncio
 import inspect
+import re
+import sys
 from contextlib import suppress
 from functools import partial, wraps
 from types import FunctionType, MethodType, ModuleType
 from typing import (
-    Dict,
     Any,
-    Optional,
     Callable,
-    Union,
-    TypeVar,
-    List,
-    Type,
+    Dict,
     FrozenSet,
-    Literal,
-    get_args,
-    Tuple,
+    Generic,
     Iterable,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
     cast,
+    get_args,
 )
-from arclet.alconna.manager import command_manager
-from arclet.alconna.typing import DataCollection
-from arclet.alconna.core import Alconna, CommandMeta
-from arclet.alconna.args import Args, ArgFlag, TAValue
-from arclet.alconna.base import Option, Subcommand
-from arclet.alconna.util import split, split_once
-from arclet.alconna.config import config as global_config
-from arclet.alconna.components.action import ArgAction
-from arclet.alconna import store_value
 
+from arclet.alconna import store_value
+from arclet.alconna.action import ArgAction
+from arclet.alconna.args import ArgFlag, Args, TAValue
+from arclet.alconna.arparma import Arparma
+from arclet.alconna.base import Option, Subcommand
+from arclet.alconna.config import config as global_config
+from arclet.alconna.core import Alconna, CommandMeta
+from arclet.alconna.exceptions import NullMessage
+from arclet.alconna.manager import command_manager
+from arclet.alconna.typing import DataCollection, KeyWordVar, MultiVar
+from arclet.alconna.util import init_spec, split, split_once
+from nepattern import AllParam, AnyOne, pattern_map, type_parser
+from typing_extensions import get_origin
+
+T = TypeVar("T")
+TCallable = TypeVar("TCallable", bound=Callable)
 
 PARSER_TYPE = Callable[
-    [Callable, Dict[str, Any], Optional[Dict[str, Any]], Optional[AbstractEventLoop]],
-    Any,
+    [Callable[..., T], Arparma, Dict[str, Any], asyncio.AbstractEventLoop],
+    T,
 ]
 
 
 def default_parser(
-    func: Callable,
-    args: Dict[str, Any],
-    local_arg: Optional[Dict[str, Any]],
-    loop: Optional[AbstractEventLoop],
-) -> Any:
-    return func(**{**args, **(local_arg or {})})
+    func: Callable[..., T],
+    result: Arparma,
+    local_arg: Dict[str, Any],
+    loop: asyncio.AbstractEventLoop,
+) -> T:
+    return result.call(func, **local_arg)
 
 
-class ALCCommand:
+class Executor(Generic[T]):
     """
     以 click-like 方法创建的 Alconna 结构体, 可以被视为一类 CommanderHandler
     """
 
     command: Alconna
-    parser_func: PARSER_TYPE
+    parser_func: Callable[
+        [Callable[..., T], Arparma, Dict[str, Any], asyncio.AbstractEventLoop],
+        T,
+    ]
     local_args: Dict[str, Any]
-    exec_target: Callable
+    exec_target: Callable[..., T]
 
     def __init__(self, command: Alconna, target: Callable):
         self.command = command
@@ -82,16 +93,16 @@ class ALCCommand:
         self.parser_func = parser_func
         return self
 
-    def __call__(self, message: DataCollection[Union[str, Any]]) -> Any:
+    def __call__(self, message: DataCollection[Union[str, Any]]) -> Arparma:
         if not self.exec_target:
             raise RuntimeError(global_config.lang.construct_decorate_error)
         result = self.command.parse(message)
         if result.matched:
             self.parser_func(
                 self.exec_target,
-                result.all_matched_args,
+                result,
                 self.local_args,
-                global_config.loop,
+                asyncio.get_event_loop(),
             )
         return result
 
@@ -102,10 +113,6 @@ class ALCCommand:
         args = sys.argv[1:]
         args.insert(0, self.command.command)
         return self.__call__(" ".join(args))
-
-
-F = TypeVar("F", bound=Callable[..., Any])
-FC = TypeVar("FC", bound=Union[Callable[..., Any], ALCCommand])
 
 
 # ----------------------------------------
@@ -119,7 +126,7 @@ class AlconnaDecorate:
 
     Examples:
         >>> cli = AlconnaDecorate()
-        >>> @cli.build_command()
+        >>> @cli.command()
         ... @cli.option("--name|-n", Args["name", str, "your name"])
         ... @cli.option("--age|-a", Args["age", int, "your age"])
         ... def hello(name: str, age: int):
@@ -133,7 +140,7 @@ class AlconnaDecorate:
 
     namespace: str
     building: bool
-    __storage: Dict[str, Any]
+    buffer: Dict[str, Any]
     default_parser: PARSER_TYPE
 
     def __init__(self, namespace: str = "Alconna"):
@@ -145,74 +152,70 @@ class AlconnaDecorate:
         """
         self.namespace = namespace
         self.building = False
-        self.__storage = {"options": []}
+        self.buffer = {}
         self.default_parser = default_parser
 
-    def build_command(
-        self, name: Optional[str] = None, meta: Optional[CommandMeta] = None
-    ) -> Callable[[F], ALCCommand]:
+    def command(
+        self,
+        name: Optional[str] = None,
+        headers: Optional[List[Any]] = None,
+    ) -> Callable[[Callable[..., T]], Executor]:
         """
         开始构建命令
 
         Args:
             name (Optional[str]): 命令名称
-            meta (Optional[CommandMeta]): 命令元数据
+            headers (Optional[List[Any]]): 命令前缀
         """
         self.building = True
 
-        def wrapper(func: Callable[..., Any]) -> ALCCommand:
-            if not self.__storage.get("func"):
-                self.__storage["func"] = func
-            command_name = name or self.__storage["func"].__name__
-            help_string = self.__storage.get("func").__doc__
-            command = Alconna(
-                command_name,
-                self.__storage.get("main_args"),
-                *self.__storage.get("options"),
+        def wrapper(func: Callable[..., T]) -> Executor[T]:
+            alc = Alconna(
+                name or func.__name__,
+                headers or [],
+                self.buffer.pop("args", Args()),
+                *self.buffer.pop("options", []),
+                meta=self.buffer.pop("meta", CommandMeta()),
                 namespace=self.namespace,
-                meta=meta or CommandMeta(description=help_string or command_name),
             )
+            if alc.meta.example and "$" in alc.meta.example and alc.headers:
+                alc.meta.example = alc.meta.example.replace("$", alc.headers[0])
             self.building = False
-            return ALCCommand(command, self.__storage["func"]).set_parser(
-                self.default_parser
-            )
+            return Executor(alc, func).set_parser(self.default_parser)
 
         return wrapper
 
-    def option(
-        self,
-        name: str,
-        args: Optional[Args] = None,
-        help: Optional[str] = None,
-        action: Optional[Callable] = None,
-        sep: str = " ",
-    ) -> Callable[[FC], FC]:
+    @init_spec(Option, True)
+    def option(self, opt: Option) -> Callable[[TCallable], TCallable]:
         """
         添加命令选项
 
-        Args:
-            name (str): 选项名称
-            args (Optional[Args]): 选项参数
-            help (Optional[str]): 选项帮助信息
-            action (Optional[Callable]): 选项动作
-            sep (str): 参数分隔符
         """
         if not self.building:
             raise RuntimeError(global_config.lang.construct_decorate_error)
 
-        def wrapper(func: FC) -> FC:
-            if not self.__storage.get("func"):
-                self.__storage["func"] = func
-            self.__storage["options"].append(
-                Option(
-                    name, args, action=action, separators=sep, help_text=help or name
-                )
-            )
+        def wrapper(func: TCallable) -> TCallable:
+            self.buffer.setdefault("options", []).append(opt)
             return func
 
         return wrapper
 
-    def arguments(self, args: Optional[Args] = None, **kwargs) -> Callable[[FC], FC]:
+    @init_spec(Subcommand, True)
+    def subcommand(self, sub: Subcommand) -> Callable[[TCallable], TCallable]:
+        """
+        添加命令选项
+
+        """
+        if not self.building:
+            raise RuntimeError(global_config.lang.construct_decorate_error)
+
+        def wrapper(func: TCallable) -> TCallable:
+            self.buffer.setdefault("options", []).append(sub)
+            return func
+
+        return wrapper
+
+    def main_args(self, args: Args) -> Callable[[TCallable], TCallable]:
         """
         添加命令参数
 
@@ -222,14 +225,57 @@ class AlconnaDecorate:
         if not self.building:
             raise RuntimeError(global_config.lang.construct_decorate_error)
 
-        def wrapper(func: FC) -> FC:
-            nonlocal args
-            if not self.__storage.get("func"):
-                self.__storage["func"] = func
-            args = args or Args()
-            for k, v in kwargs.items():
-                args.add_argument(k, value=v)
-            self.__storage["main_args"] = args
+        def wrapper(func: TCallable) -> TCallable:
+            self.buffer["args"] = args
+            return func
+
+        return wrapper
+
+    @init_spec(Args, True)
+    def argument(self, arg: Args) -> Callable[[TCallable], TCallable]:
+        """
+        添加命令参数
+        """
+        if not self.building:
+            raise RuntimeError(global_config.lang.construct_decorate_error)
+
+        def wrapper(func: TCallable) -> TCallable:
+            if args := self.buffer.get("args"):
+                args: Args
+                args.__merge__(arg)
+            else:
+                self.buffer["args"] = Args().__merge__(arg)
+            return func
+
+        return wrapper
+
+    def meta(self, content: CommandMeta) -> Callable[[TCallable], TCallable]:
+        """
+        添加命令元数据
+        """
+        if not self.building:
+            raise RuntimeError(global_config.lang.construct_decorate_error)
+
+        def wrapper(func: TCallable) -> TCallable:
+            self.buffer["meta"] = content
+            return func
+
+        return wrapper
+
+    def help(
+        self,
+        description: str,
+        usage: Optional[str] = None,
+        example: Optional[str] = None,
+    ) -> Callable[[TCallable], TCallable]:
+        """
+        添加命令元数据
+        """
+        if not self.building:
+            raise RuntimeError(global_config.lang.construct_decorate_error)
+
+        def wrapper(func: TCallable) -> TCallable:
+            self.buffer["meta"] = CommandMeta(description, usage, example)
             return func
 
         return wrapper
@@ -243,6 +289,54 @@ class AlconnaDecorate:
         """
         self.default_parser = parser_func
         return self
+
+
+def args_from_list(args: List[List[str]], custom_types: Dict[str, type]) -> Args:
+    """
+    从处理好的字符串列表中生成Args
+
+    Examples:
+        >>> args_from_list([["foo", "str"], ["bar", "digit", "123"]], {"digit":int})
+    """
+    _args = Args()
+    for arg in args:
+        if (_le := len(arg)) == 0:
+            raise NullMessage
+        default = arg[2].strip(" ") if _le > 2 else None
+        name = arg[0].strip(" ")
+        value = (
+            AllParam
+            if name.startswith("...")
+            else (
+                AnyOne
+                if name.startswith("..")
+                else (arg[1].strip(" ") if _le > 1 else name.lstrip(".-"))
+            )
+        )
+        name = name.replace("...", "").replace("..", "")
+        _multi, _kw, _slice = "", False, -1
+        if value not in (AllParam, AnyOne):
+            if mat := re.match(
+                r"^(?P<name>.+?)(?P<multi>[+*]+)(\[)?(?P<slice>\d*)(])?$", value
+            ):
+                value = mat["name"]
+                _multi = mat["multi"][0]
+                _kw = len(mat["multi"]) > 1
+                _slice = int(mat["slice"] or -1)
+            with suppress(NameError, ValueError, TypeError):
+                value = pattern_map.get(value, None) or type_parser(eval(value, custom_types))  # type: ignore
+                default = (
+                    (get_origin(value.origin) or value.origin)(default)
+                    if default
+                    else default
+                )
+            if _multi:
+                value = MultiVar(
+                    KeyWordVar(value) if _kw else value,
+                    _slice if _slice > 1 else _multi,
+                )
+        _args.add(name, value=value, default=default)
+    return _args
 
 
 def _from_format(
@@ -320,7 +414,7 @@ def _from_format(
             _arg = (
                 Args[may_parts[0], Any]
                 if len(may_parts) == 1
-                else Args.from_string_list([may_parts], {})
+                else args_from_list([may_parts], {})
             )
             if _string_stack:
                 if _key_ref > 1:
@@ -372,16 +466,13 @@ def _from_string(
     args = args_gen(others)
     if help_string := re.findall(r"(?: )#(.+)$", others):  # noqa
         meta.description = help_string[0]
-    custom_types = Alconna.custom_types.copy()
-    custom_types.update(
-        getattr(inspect.getmodule(inspect.stack()[1][0]), "__dict__", {})
-    )
-    _args = Args.from_string_list(args, custom_types.copy())
+    custom_types = getattr(inspect.getmodule(inspect.stack()[1][0]), "__dict__", {})
+    _args = args_from_list(args, custom_types.copy())
     for opt in option:
         opt_head, opt_others = split_once(opt, sep)
         opt_args = args_gen(opt_others)
         _typs = custom_types.copy()
-        _opt_args = Args.from_string_list(opt_args, _typs)
+        _opt_args = args_from_list(opt_args, _typs)
         opt_action_value = re.findall(r"&(.+?)(?: #.+?)?$", opt_others)
         if not (opt_help_string := re.findall(r"(?: )#(.+)$", opt_others)):  # noqa
             opt_help_string = [opt_head]
@@ -468,7 +559,7 @@ class AlconnaMounter(Alconna):
         interrupt: bool = False,
     ):  # noqa
         message = self._parse_action(message) or message
-        return super(AlconnaMounter, self).parse(
+        return super().parse(  # noqa
             message, duplication=duplication, interrupt=interrupt
         )
 
@@ -858,5 +949,5 @@ __all__ = [
     "Argument",
     "AlconnaDecorate",
     "delegate",
-    "ALCCommand",
+    "Executor",
 ]

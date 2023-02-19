@@ -124,9 +124,9 @@ def test_delegate():
 def test_click_like():
     con6 = AlconnaDecorate()
 
-    @con6.build_command("con6")
-    @con6.option("--count", Args["num", int], help="Test Option Count")
-    @con6.option("--foo", Args["bar", str], help="Test Option Foo")
+    @con6.command("con6")
+    @con6.option("--count", Args["num", int], help_text="Test Option Count")
+    @con6.option("--foo", Args["bar", str], help_text="Test Option Foo")
     def hello(bar: str, num: int = 1):
         """测试DOC"""
         print(bar * num)

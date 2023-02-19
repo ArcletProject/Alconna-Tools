@@ -1,17 +1,19 @@
 import inspect
 import re
-from typing import Type, Tuple, Callable, Literal, TypeVar, Any, Union
+from typing import Any, Callable, Literal, Tuple, Type, TypeVar, Union
+
+from arclet.alconna import Args, config
 from nepattern import (
     BasePattern,
     Empty,
-    pattern_map,
-    PatternModel,
-    set_converter,
     MatchFailed,
+    PatternModel,
     lang,
+    pattern_map,
+    set_converter,
 )
-from arclet.alconna import config, Args
-from arclet.alconna.analysis.base import analyse_args
+
+from .debug import analyse_args
 
 TOrigin = TypeVar("TOrigin")
 
@@ -100,7 +102,9 @@ class ObjectPattern(BasePattern):
             raise MatchFailed(lang.type_error.format(target=input_.__class__))
         if not (mat := self._re_pattern.fullmatch(input_)):
             raise MatchFailed(lang.content_error.format(target=input_))
-        if res := analyse_args(self._args, list(mat.groupdict().values()), raise_exception=False):
+        if res := analyse_args(
+            self._args, list(mat.groupdict().values()), raise_exception=False
+        ):
             return self.origin(**res)
         else:
             raise MatchFailed(lang.content_error.format(target=input_))

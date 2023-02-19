@@ -3,7 +3,7 @@ from nepattern import Empty, AllParam, BasePattern
 
 from arclet.alconna.args import Args, Arg
 from arclet.alconna.base import Subcommand, Option
-from arclet.alconna.components.output import TextFormatter, Trace
+from arclet.alconna.formatter import TextFormatter, Trace
 
 
 class ArgParserTextFormatter(TextFormatter):

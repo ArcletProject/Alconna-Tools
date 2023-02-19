@@ -3,10 +3,9 @@
 from datetime import datetime
 from typing import Literal
 from dataclasses import dataclass, field
-from arclet.alconna.components.behavior import ArparmaBehavior
 from arclet.alconna.exceptions import OutBoundsBehave
 from arclet.alconna.config import config
-from arclet.alconna.arparma import Arparma
+from arclet.alconna.arparma import Arparma, ArparmaBehavior
 
 
 def exclusion(target_path: str, other_path: str):
