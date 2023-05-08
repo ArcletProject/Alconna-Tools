@@ -1,3 +1,4 @@
+from .config import lang as _lang  # noqa
 from .construct import AlconnaDecorate, AlconnaFormat, AlconnaString, AlconnaFire, Argument, delegate, Executor
 from .pattern import ObjectPattern
 from .checker import simple_type

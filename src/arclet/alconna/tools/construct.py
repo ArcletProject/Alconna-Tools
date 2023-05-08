@@ -3,39 +3,35 @@ import inspect
 import re
 import sys
 from contextlib import suppress
+from dataclasses import dataclass, field
 from functools import partial, wraps
 from types import FunctionType, MethodType, ModuleType
 from typing import (
     Any,
     Callable,
     Dict,
-    FrozenSet,
     Generic,
-    Iterable,
     List,
-    Literal,
     Optional,
-    Tuple,
     Type,
     TypeVar,
     Union,
     cast,
-    get_args,
+    TypedDict,
 )
 
-from arclet.alconna import store_value
-from arclet.alconna.action import ArgAction
-from arclet.alconna.args import ArgFlag, Args, TAValue
-from arclet.alconna.arparma import Arparma
+
+from arclet.alconna.args import ArgFlag, Args, TAValue, Arg
+from arclet.alconna.action import Action
+from arclet.alconna.arparma import Arparma, ArparmaBehavior
 from arclet.alconna.base import Option, Subcommand
-from arclet.alconna.config import config as global_config
-from arclet.alconna.core import Alconna, CommandMeta
+from arclet.alconna.core import Alconna
 from arclet.alconna.exceptions import NullMessage
 from arclet.alconna.manager import command_manager
-from arclet.alconna.typing import DataCollection, KeyWordVar, MultiVar
-from arclet.alconna.util import init_spec, split, split_once
-from nepattern import AllParam, AnyOne, pattern_map, type_parser
-from typing_extensions import get_origin
+from arclet.alconna.typing import TDC, KeyWordVar, MultiVar, CommandMeta
+from nepattern import AllParam, AnyOne, all_patterns, type_parser, RawStr
+from tarina import split, split_once, init_spec, lang
+from typing_extensions import get_origin, NotRequired
 
 T = TypeVar("T")
 TCallable = TypeVar("TCallable", bound=Callable)
@@ -93,9 +89,9 @@ class Executor(Generic[T]):
         self.parser_func = parser_func
         return self
 
-    def __call__(self, message: DataCollection[Union[str, Any]]) -> Arparma:
+    def __call__(self, message: TDC) -> Arparma[TDC]:
         if not self.exec_target:
-            raise RuntimeError(global_config.lang.construct_decorate_error)
+            raise RuntimeError(lang.require("tools", "construct.decorate_error"))
         result = self.command.parse(message)
         if result.matched:
             self.parser_func(
@@ -109,7 +105,7 @@ class Executor(Generic[T]):
     def from_commandline(self):
         """从命令行解析参数"""
         if not self.command:
-            raise RuntimeError(global_config.lang.construct_decorate_error)
+            raise RuntimeError(lang.require("tools", "construct.decorate_error"))
         args = sys.argv[1:]
         args.insert(0, self.command.command)
         return self.__call__(" ".join(args))
@@ -178,8 +174,8 @@ class AlconnaDecorate:
                 meta=self.buffer.pop("meta", CommandMeta()),
                 namespace=self.namespace,
             )
-            if alc.meta.example and "$" in alc.meta.example and alc.headers:
-                alc.meta.example = alc.meta.example.replace("$", alc.headers[0])
+            if alc.meta.example and "$" in alc.meta.example:
+                alc.meta.example = alc.meta.example.replace("$", alc.headers[0] if alc.headers else "")
             self.building = False
             return Executor(alc, func).set_parser(self.default_parser)
 
@@ -192,7 +188,7 @@ class AlconnaDecorate:
 
         """
         if not self.building:
-            raise RuntimeError(global_config.lang.construct_decorate_error)
+            raise RuntimeError(lang.require("tools", "construct.decorate_error"))
 
         def wrapper(func: TCallable) -> TCallable:
             self.buffer.setdefault("options", []).append(opt)
@@ -207,7 +203,7 @@ class AlconnaDecorate:
 
         """
         if not self.building:
-            raise RuntimeError(global_config.lang.construct_decorate_error)
+            raise RuntimeError(lang.require("tools", "construct.decorate_error"))
 
         def wrapper(func: TCallable) -> TCallable:
             self.buffer.setdefault("options", []).append(sub)
@@ -223,7 +219,7 @@ class AlconnaDecorate:
             args (Args): 参数
         """
         if not self.building:
-            raise RuntimeError(global_config.lang.construct_decorate_error)
+            raise RuntimeError(lang.require("tools", "construct.decorate_error"))
 
         def wrapper(func: TCallable) -> TCallable:
             self.buffer["args"] = args
@@ -237,7 +233,7 @@ class AlconnaDecorate:
         添加命令参数
         """
         if not self.building:
-            raise RuntimeError(global_config.lang.construct_decorate_error)
+            raise RuntimeError(lang.require("tools", "construct.decorate_error"))
 
         def wrapper(func: TCallable) -> TCallable:
             if args := self.buffer.get("args"):
@@ -254,7 +250,7 @@ class AlconnaDecorate:
         添加命令元数据
         """
         if not self.building:
-            raise RuntimeError(global_config.lang.construct_decorate_error)
+            raise RuntimeError(lang.require("tools", "construct.decorate_error"))
 
         def wrapper(func: TCallable) -> TCallable:
             self.buffer["meta"] = content
@@ -272,7 +268,7 @@ class AlconnaDecorate:
         添加命令元数据
         """
         if not self.building:
-            raise RuntimeError(global_config.lang.construct_decorate_error)
+            raise RuntimeError(lang.require("tools", "construct.decorate_error"))
 
         def wrapper(func: TCallable) -> TCallable:
             self.buffer["meta"] = CommandMeta(description, usage, example)
@@ -297,6 +293,9 @@ def args_from_list(args: List[List[str]], custom_types: Dict[str, type]) -> Args
 
     Examples:
         >>> args_from_list([["foo", "str"], ["bar", "digit", "123"]], {"digit":int})
+        Args(foo: str, bar: int = 123)
+        >>> args_from_list([["foo", "str+"]])
+        Args(foo: (str+))
     """
     _args = Args()
     for arg in args:
@@ -306,14 +305,10 @@ def args_from_list(args: List[List[str]], custom_types: Dict[str, type]) -> Args
         name = arg[0].strip(" ")
         value = (
             AllParam
-            if name.startswith("...")
-            else (
-                AnyOne
-                if name.startswith("..")
-                else (arg[1].strip(" ") if _le > 1 else name.lstrip(".-"))
-            )
+            if name.startswith("...") else
+            (arg[1].strip(" ") if _le > 1 else AnyOne)
         )
-        name = name.replace("...", "").replace("..", "")
+        name = name.replace("...", "")
         _multi, _kw, _slice = "", False, -1
         if value not in (AllParam, AnyOne):
             if mat := re.match(
@@ -324,7 +319,7 @@ def args_from_list(args: List[List[str]], custom_types: Dict[str, type]) -> Args
                 _kw = len(mat["multi"]) > 1
                 _slice = int(mat["slice"] or -1)
             with suppress(NameError, ValueError, TypeError):
-                value = pattern_map.get(value, None) or type_parser(eval(value, custom_types))  # type: ignore
+                value = all_patterns().get(value, None) or type_parser(eval(value, custom_types))  # type: ignore
                 default = (
                     (get_origin(value.origin) or value.origin)(default)
                     if default
@@ -338,10 +333,26 @@ def args_from_list(args: List[List[str]], custom_types: Dict[str, type]) -> Args
         _args.add(name, value=value, default=default)
     return _args
 
+def _args_from_string(string: str, formats: Dict[str, Union[TAValue, Args, Arg]], args: Args):
+    if mat := re.match(r"^\{(?P<pattern>.+?)\}$", string):
+        pat = mat["pattern"]
+        if pat in formats:
+            if isinstance(formats[pat], (Args, Arg)):
+                args.__merge__(formats[pat])
+            else:
+                args.__merge__([pat, formats[pat]])
+        else:
+            part = re.split("[:=]", pat)
+            if len(part) == 1:
+                args.__merge__([part[0], AnyOne])
+            else:
+                args.__merge__(args_from_list([part], {}))
+    else:
+        args.__merge__([string, RawStr(string)])
 
 def _from_format(
     format_string: str,
-    format_args: Optional[Dict[str, Union[TAValue, Args, Option, List[Option]]]] = None,
+    format_args: Optional[Dict[str, Union[TAValue, Args, Arg]]] = None,
     meta: Optional[CommandMeta] = None,
 ) -> "Alconna":
     """
@@ -351,7 +362,6 @@ def _from_format(
 
     Examples:
 
-        >>> from arclet.alconna.tools import AlconnaFormat
         >>> alc1 = AlconnaFormat(
         ...     "lp user {target:str} perm set {perm:str} {default}",
         ...     {"default": Args["val", bool, True]},
@@ -365,96 +375,51 @@ def _from_format(
         >>> alc1.parse("lp user AAA perm set admin.all False")
         >>> alc1.parse("lp user AAA perm info admin.all")
     """
-    format_args = format_args or {}
+    formats = format_args or {}
     _key_ref = 0
-    strings = split(format_string)
+    strings = split(format_string, (" ",))
     command = strings.pop(0)
     options = []
     main_args = Args()
-
-    _string_stack: List[str] = []
-    for i, string in enumerate(strings):
-        if not (arg := re.findall(r"{(.+)}", string)):
-            _string_stack.append(string)
-            _key_ref = 0
+    _finish_arg = False
+    _stack = []
+    for string in strings:
+        if string.startswith("-"):
+            _finish_arg = True
+            _stack.append(string)
             continue
-        _key_ref += 1
-        key = arg[0]
-        try:
-            value = format_args[key]
-            try:
-                _name, _requires = _string_stack[-1], _string_stack[:-1]
-                if isinstance(value, Option):
-                    options.append(Subcommand(_name, value, requires=_requires))
-                elif isinstance(value, list):
-                    options.append(Subcommand(_name, *value, requires=_requires))
-                elif isinstance(value, Args):
-                    options.append(Option(_name, args=value, requires=_requires))
-                else:
-                    options.append(
-                        Option(_name, Args(**{key: value}), requires=_requires)
-                    )
-                _string_stack.clear()
-            except IndexError:
-                if i == 0:
-                    if isinstance(value, Args):
-                        main_args.__merge__(value)
-                    elif not isinstance(value, Option) and not isinstance(value, list):
-                        main_args.__merge__(Args(**{key: value}))
-                elif isinstance(value, Option):
-                    options.append(value)
-                elif isinstance(value, Args):
-                    options[-1].args.__merge__(value)
-                    options[-1].nargs = len(options[-1].args.argument)
-                else:
-                    options[-1].args.__merge__(Args(**{key: value}))
-                    options[-1].nargs += 1
-        except KeyError:
-            may_parts = re.split(r"[:=]", key.replace(" ", ""))
-            _arg = (
-                Args[may_parts[0], Any]
-                if len(may_parts) == 1
-                else args_from_list([may_parts], {})
-            )
-            if _string_stack:
-                if _key_ref > 1:
-                    options[-1].args.__merge__(_arg)
-                    options[-1].nargs = len(options[-1].args.argument)
-                else:
-                    options.append(
-                        Option(_string_stack[-1], _arg, requires=_string_stack[:-1])
-                    )
-                    _string_stack.clear()
-            else:
-                main_args.__merge__(_arg)
-    return Alconna(command, main_args, *options, meta=meta)
+        if not _finish_arg:
+            _args_from_string(string, formats, main_args)
+        elif not _stack:
+            raise ValueError(lang.require("tools", "construct.format_error".format(target=string)))
+        else:
+            singles = _stack[:-1]
+            name = _stack[-1]
+            _opt_args = Args()
+            _args_from_string(string, formats, _opt_args)
+            options.extend(Option(single) for single in singles)
+            options.append(Option(name, _opt_args))
+    alc = Alconna(command, main_args, *options, meta=meta)
+    for ana, __ in command_manager.requires(alc.path):
+        if ana.command != alc:
+            alc = alc | ana.command
+    return alc
 
-
-def _from_string(
-    command: str, *option: str, sep: str = " ", meta: Optional[CommandMeta] = None
-) -> "Alconna":
-    """
-    以纯字符串的形式构造Alconna的简易方式, 或者说是koishi-like的方式
+class AlconnaString:
+    """以纯字符串的形式构造Alconna的简易方式, 或者说是koishi-like的方式
 
     Examples:
 
-        >>> from arclet.alconna.tools import AlconnaString
-        >>> alc = AlconnaString(
-        ...     "test <message:str:hello> #HELP_STRING",
-        ...     "--foo|-f <val:bool>",
-        ...     "-bar <bar:str> [baz:int]",
-        ...     "-qux &123"
+        >>> alc = (
+        ...     AlconnaString("test <message:str:hello> #HELP_STRING")
+        ...     .option("foo", "--foo -f <val:bool>")
+        ...     .option("bar", "-bar <bar:str> [baz:int]")
+        ...     .option("qux", default=123)
+        ...     .build()
         ... )
         >>> alc.parse("test abcd --foo True")
     """
-
-    _options = []
-    meta = meta or CommandMeta()
-    head, others = split_once(command, sep)
-    headers = [head]
-    if re.match(r"^\[(.+?)]$", head):
-        headers = head.strip("[]").split("|")
-
+    @staticmethod
     def args_gen(_others: str):
         arg = [re.split("[:=]", p) for p in re.findall(r"<(.+?)>", _others)]
         for p in re.findall(r"\[(.+?)]", _others):
@@ -463,40 +428,71 @@ def _from_string(
             arg.append(res)
         return arg
 
-    args = args_gen(others)
-    if help_string := re.findall(r"(?: )#(.+)$", others):  # noqa
-        meta.description = help_string[0]
-    custom_types = getattr(inspect.getmodule(inspect.stack()[1][0]), "__dict__", {})
-    _args = args_from_list(args, custom_types.copy())
-    for opt in option:
-        opt_head, opt_others = split_once(opt, sep)
-        opt_args = args_gen(opt_others)
-        _typs = custom_types.copy()
-        _opt_args = args_from_list(opt_args, _typs)
-        opt_action_value = re.findall(r"&(.+?)(?: #.+?)?$", opt_others)
-        if not (opt_help_string := re.findall(r"(?: )#(.+)$", opt_others)):  # noqa
-            opt_help_string = [opt_head]
-        _options.append(Option(opt_head, args=_opt_args))
-        if opt_action_value:
-            _options[-1].action = store_value(
-                eval(opt_action_value[0].rstrip(), {"true": True, "false": False})
+    def __init__(self, command: str, help_text: Optional[str] = None):
+        self.buffer = {}
+        self.options = []
+        self.meta = CommandMeta(description=help_text, fuzzy_match=True)
+        head, others = split_once(command, (" ",))
+        if mat := re.match(r"^\[(.+?)]$", head):
+            self.buffer["prefixes"] = mat[1].split("|")
+        else:
+            self.buffer["command"] = head.lstrip()
+        args = self.args_gen(others)
+        if help_string := re.findall(r"(?: )#(.+)$", others):  # noqa
+            self.meta.description = help_string[0]
+        custom_types = getattr(inspect.getmodule(inspect.stack()[1][0]), "__dict__", {})
+        self.buffer["main_args"] = args_from_list(args, custom_types.copy())
+
+    def option(self, name: str, opt: Optional[str] = None, default: Any = None, action: Optional[Action] = None):
+        if opt is None:
+            self.options.append(
+                Option(name, default=default, action=action)
             )
-        _options[-1].help_text = opt_help_string[0]
-    meta.fuzzy_match = True
-    return Alconna(headers, _args, *_options, meta=meta)
+            return self
+        parts = split(opt, (" ",))
+        aliases = []
+        index = 0
+        for part in parts:
+            if not part.startswith("-"):
+                break
+            aliases.append(part)
+            index += 1
+        _args = Args()
+        if parts[index:]:
+            custom_types = getattr(inspect.getmodule(inspect.stack()[1][0]), "__dict__", {})
+            _args = args_from_list(self.args_gen(" ".join(parts[index:])), custom_types.copy())
+        help_text = None
+        if help_string := re.findall(r"(?: )#(.+)$", opt):  # noqa
+            help_text = help_string[0]
+        if aliases:
+            opt = Option("|".join(aliases), _args, dest=name, default=default, action=action, help_text=help_text)
+        else:
+            opt = Option(name, _args, default=default, action=action, help_text=help_text)
+        self.options.append(opt)
+        return self
 
+    def usage(self, content: str):
+        self.meta.usage = content
+        return self
 
-config_key = Literal[
-    "headers",
-    "raise_exception",
-    "description",
-    "get_subcommand",
-    "namespace",
-    "command",
-]
+    def example(self, content: str):
+        self.meta.example = content
+        return self
 
+    def build(self):
+        return Alconna(*self.buffer.values(), *self.options, meta=self.meta)
 
-def visit_config(obj: Any, config_keys: Iterable[str]):
+class MountConfig(TypedDict):
+    prefixes: NotRequired[List[str]]
+    raise_exception: NotRequired[bool]
+    description: NotRequired[str]
+    # get_subcommand: NotRequired[bool]
+    namespace: NotRequired[str]
+    command: NotRequired[str]
+
+config_keys = ("prefixes", "raise_exception", "description", "namespace", "command")
+
+def visit_config(obj: Any):
     result = {}
     if isinstance(obj, (FunctionType, MethodType)):
         codes, _ = inspect.getsourcelines(obj)
@@ -525,53 +521,27 @@ def visit_config(obj: Any, config_keys: Iterable[str]):
         result = {k: getattr(config, k) for k in config_keys if k in dir(config)}
     return result
 
+@dataclass(unsafe_hash=True)
+class CallbackHandler(ArparmaBehavior):
+    main_call: Optional[Callable] = field(default=None)
+    options: Dict[str, Callable] = field(default_factory=dict, hash=False)
 
-class AlconnaMounter(Alconna):
-    mount_cls: Type
-    instance: object
-    config_keys: FrozenSet[str] = frozenset(get_args(config_key))
+    def operate(self, interface: Arparma):
+        self.before_operate(interface)
+        if call := self.main_call:
+            call(**interface.main_args)
+        for path, action in self.options.items():
+            if d := interface.query(path, None):
+                action(**d)
 
-    def _instance_action(self, option_dict, varargs, kwargs):
-        if not self.instance:
-            self.instance = self.mount_cls(*option_dict.values(), *varargs, **kwargs)
-        else:
-            for key, value in option_dict.items():
-                setattr(self.instance, key, value)
-        return option_dict
-
-    def _get_instance(self):
-        return self.instance
-
-    def _inject_instance(self, target: Callable):
-        @wraps(target)
-        def __wrapper(*args, **kwargs):
-            return target(self._get_instance(), *args, **kwargs)
-
-        return __wrapper
-
-    def _parse_action(self, message):
-        ...
-
-    def parse(
-        self,
-        message: DataCollection[Union[str, Any]],
-        duplication: Optional[Any] = None,
-        interrupt: bool = False,
-    ):  # noqa
-        message = self._parse_action(message) or message
-        return super().parse(  # noqa
-            message, duplication=duplication, interrupt=interrupt
-        )
-
-
-class FuncMounter(AlconnaMounter):
+class FuncMounter(Alconna):
     def __init__(
-        self, func: Union[FunctionType, MethodType], config: Optional[dict] = None
+        self, func: Union[FunctionType, MethodType], config: Optional[MountConfig] = None
     ):
-        config = config or visit_config(func, self.config_keys)
+        config = config or visit_config(func)
         func_name = func.__name__
         if func_name.startswith("_"):
-            raise ValueError(global_config.lang.construct_function_name_error)
+            raise ValueError(lang.require("tools", "construct.func_name_error"))
         _args, method = Args.from_callable(func)
         if method and isinstance(func, MethodType):
             self.instance = func.__self__
@@ -584,179 +554,20 @@ class FuncMounter(AlconnaMounter):
                 description=config.get("description", func.__doc__ or func_name),
                 raise_exception=config.get("raise_exception", True),
             ),
-            action=ArgAction(func),
             namespace=config.get("namespace", None),
         )
+        self.bind()(func)
 
-
-def visit_subcommand(obj: Any):
-    result = []
-    subcommands: List[Tuple[str, Type]] = inspect.getmembers(
-        obj, lambda x: inspect.isclass(x) and not x.__name__.endswith("Config")
-    )
-
-    class _MountSubcommand(Subcommand):
-        sub_instance: object
-
-    for cls_name, subcommand_cls in filter(
-        lambda x: not x[0].startswith("_"), subcommands
-    ):
-        init = inspect.getfullargspec(subcommand_cls.__init__)
-        members = inspect.getmembers(
-            subcommand_cls, lambda x: inspect.isfunction(x) or inspect.ismethod(x)
-        )
-        config = visit_config(subcommand_cls, ["command", "description"])
-        _options = []
-        sub_help_text = (
-            subcommand_cls.__doc__ or subcommand_cls.__init__.__doc__ or cls_name
-        )
-
-        if len(init.args + init.kwonlyargs) > 1:
-            sub_args = Args.from_callable(subcommand_cls.__init__)[0]
-            sub = _MountSubcommand(
-                config.get("command", cls_name),
-                sub_args,
-                help_text=config.get("description", sub_help_text),
-            )
-            sub.sub_instance = subcommand_cls
-
-            class _InstanceAction(ArgAction):
-                def handle(
-                    self, option_dict, varargs=None, kwargs=None, raise_exception=False
-                ):
-                    if not sub.sub_instance:
-                        sub.sub_instance = subcommand_cls(
-                            *option_dict.values(), *varargs, **kwargs
-                        )
-                    else:
-                        for key, value in option_dict.items():
-                            setattr(sub.sub_instance, key, value)
-                    return option_dict
-
-            sub.action = _InstanceAction(lambda: None)
-        else:
-            sub = _MountSubcommand(
-                config.get("command", cls_name),
-                help_text=config.get("description", sub_help_text),
-            )
-            sub.sub_instance = subcommand_cls()
-
-        def _get_sub_instance(_sub):
-            return _sub.sub_instance
-
-        def _inject_sub_instance(target: Callable):
-            @wraps(target)
-            def __wrapper(*args, **kwargs):
-                return target(_get_sub_instance, *args, **kwargs)
-
-            return __wrapper
-
-        for name, func in filter(lambda x: not x[0].startswith("_"), members):
-            help_text = func.__doc__ or name
-            _opt_args, method = Args.from_callable(func)
-            if method:
-                func = _inject_sub_instance(func)
-            _options.append(
-                Option(name, _opt_args, action=ArgAction(func), help_text=help_text)
-            )
-        sub.options = _options
-        result.append(sub)
-    return result
-
-
-class ClassMounter(AlconnaMounter):
-    def __init__(self, mount_cls: Type, config: Optional[dict] = None):
-        self.mount_cls = mount_cls
-        self.instance: mount_cls = None
-        config = config or visit_config(mount_cls, self.config_keys)
-        init = inspect.getfullargspec(mount_cls.__init__)
-        members = inspect.getmembers(
-            mount_cls, lambda x: inspect.isfunction(x) or inspect.ismethod(x)
-        )
-        _options = []
-        if config.get("get_subcommand", False):
-            subcommands = visit_subcommand(mount_cls)
-            _options.extend(subcommands)
-        main_help_text = (
-            mount_cls.__doc__ or mount_cls.__init__.__doc__ or mount_cls.__name__
-        )
-
-        if len(init.args + init.kwonlyargs) > 1:
-            main_args = Args.from_callable(
-                mount_cls.__init__,
-            )[0]
-
-            instance_handle = self._instance_action
-
-            class _InstanceAction(ArgAction):
-                def handle(
-                    self, option_dict, varargs=None, kwargs=None, raise_exception=False
-                ):
-                    return instance_handle(option_dict, varargs, kwargs)
-
-            main_action = _InstanceAction(lambda: None)
-            for name, func in filter(lambda x: not x[0].startswith("_"), members):
-                help_text = func.__doc__ or name
-                _opt_args, method = Args.from_callable(func)
-                if method:
-                    func = self._inject_instance(func)
-                _options.append(
-                    Option(name, _opt_args, action=ArgAction(func), help_text=help_text)
-                )
-            super().__init__(
-                config.get("command", mount_cls.__name__),
-                main_args,
-                config.get("headers", []),
-                *_options,
-                namespace=config.get("namespace", None),
-                meta=CommandMeta(
-                    description=config.get("description", main_help_text),
-                    raise_exception=config.get("raise_exception", True),
-                ),
-                action=main_action,
-            )
-        else:
-            self.instance = mount_cls()
-            for name, func in filter(lambda x: not x[0].startswith("_"), members):
-                help_text = func.__doc__ or name
-                _opt_args, method = Args.from_callable(func)
-                if method:
-                    func = self._inject_instance(func)
-                _options.append(
-                    Option(
-                        name,
-                        args=_opt_args,
-                        action=ArgAction(func),
-                        help_text=help_text,
-                    )
-                )
-            super().__init__(
-                config.get("command", mount_cls.__name__),
-                config.get("headers", []),
-                *_options,
-                namespace=config.get("namespace", None),
-                meta=CommandMeta(
-                    description=config.get("description", main_help_text),
-                    raise_exception=config.get("raise_exception", True),
-                ),
-            )
-
-    def _parse_action(self, message):
-        if self.instance:
-            for arg in self.args.argument:
-                if hasattr(self.instance, arg.name):
-                    arg.field.default = getattr(self.instance, arg.name)
-
-
-class ModuleMounter(AlconnaMounter):
+class ModuleMounter(Alconna):
     def __init__(self, module: ModuleType, config: Optional[dict] = None):
         self.mount_cls = module.__class__
         self.instance = module
-        config = config or visit_config(module, self.config_keys)
+        config = config or visit_config(module)
         _options = []
         members = inspect.getmembers(
             module, lambda x: inspect.isfunction(x) or inspect.ismethod(x)
         )
+        behavior = CallbackHandler()
         for name, func in members:
             if name.startswith("_") or func.__name__.startswith("_"):
                 continue
@@ -766,9 +577,10 @@ class ModuleMounter(AlconnaMounter):
                 func = partial(func, func.__self__)
             _options.append(
                 Option(
-                    name, args=_opt_args, action=ArgAction(func), help_text=help_text
+                    name, args=_opt_args, help_text=help_text
                 )
             )
+            behavior.options[f"options.{name}.args"] = func
         super().__init__(
             config.get("command", module.__name__),
             config.get("headers", []),
@@ -780,91 +592,127 @@ class ModuleMounter(AlconnaMounter):
                 ),
                 raise_exception=config.get("raise_exception", True),
             ),
+            behaviors=[behavior],
         )
 
-    def _parse_action(self, message):
-        if self.command.startswith("_"):
-            if isinstance(message, str):
-                message = f"{self.command} {message}"
+
+class ClassMounter(Alconna):
+
+    def _get_instance(self):
+        return self.instance
+
+    def _inject_instance(self, target: Callable):
+        @wraps(target)
+        def wrapper(*args, **kwargs):
+            return target(self._get_instance(), *args, **kwargs)
+
+        return wrapper
+
+    def __init__(self, mount_cls: Type, config: Optional[MountConfig] = None):
+        self.mount_cls = mount_cls
+        self.instance: mount_cls = None
+        config = config or visit_config(mount_cls)
+        members = inspect.getmembers(
+            mount_cls, lambda x: inspect.isfunction(x) or inspect.ismethod(x)
+        )
+
+        _options = []
+        main_help_text = (
+            mount_cls.__doc__ or mount_cls.__init__.__doc__ or mount_cls.__name__
+        )
+
+        main_args = Args.from_callable(mount_cls.__init__)[0]
+
+        def _main_func(**kwargs):
+            if self.instance is None:
+                self.instance = mount_cls(**kwargs)
+                for key, value in kwargs.items():
+                    self.args[key].field.default = value
             else:
-                message.inject(0, self.command)
-        return message
+                for k, v in kwargs.items():
+                    setattr(self.instance, k, v)
 
 
-class ObjectMounter(AlconnaMounter):
+        behavior = CallbackHandler(main_call=_main_func)
+        for name, func in filter(lambda x: not x[0].startswith("_"), members):
+            help_text = func.__doc__ or name
+            _opt_args, method = Args.from_callable(func)
+            if method:
+                func = self._inject_instance(func)
+            _options.append(
+                Option(name, _opt_args, help_text=help_text)
+            )
+            behavior.options[f"options.{name}.args"] = func
+        super().__init__(
+            config.get("command", mount_cls.__name__),
+            main_args,
+            config.get("headers", []),
+            *_options,
+            namespace=config.get("namespace", None),
+            meta=CommandMeta(
+                description=config.get("description", main_help_text),
+                raise_exception=config.get("raise_exception", True),
+            ),
+            behaviors=[behavior],
+        )
+
+
+class ObjectMounter(Alconna):
     def __init__(self, obj: object, config: Optional[dict] = None):
         self.mount_cls = type(obj)
         self.instance = obj
-        config = config or visit_config(obj, self.config_keys)
+        config = config or visit_config(obj)
         obj_name = obj.__class__.__name__
-        init = inspect.getfullargspec(obj.__init__)
         members = inspect.getmembers(
             obj, lambda x: inspect.isfunction(x) or inspect.ismethod(x)
         )
         _options = []
-        if config.get("get_subcommand", False):
-            subcommands = visit_subcommand(obj)
-            _options.extend(subcommands)
         main_help_text = obj.__doc__ or obj.__init__.__doc__ or obj_name
+
+        def _main_func(**kwargs):
+            for k, v in kwargs.items():
+                setattr(self.instance, k, v)
+
+        behavior = CallbackHandler(main_call=_main_func)
+
         for name, func in filter(lambda x: not x[0].startswith("_"), members):
             help_text = func.__doc__ or name
             _opt_args, _ = Args.from_callable(func)
             _options.append(
                 Option(
-                    name, args=_opt_args, action=ArgAction(func), help_text=help_text
+                    name, args=_opt_args, help_text=help_text
                 )
             )
-        if len(init.args) > 1:
-            main_args = Args.from_callable(obj.__init__)[0]
-            for arg in main_args.argument:
-                if hasattr(self.instance, arg.name):
-                    arg.field.default = getattr(self.instance, arg.name)
+            behavior.options[f"options.{name}.args"] = func
+        main_args = Args.from_callable(obj.__init__)[0]
+        for arg in main_args.argument:
+            if hasattr(self.instance, arg.name):
+                arg.field.default = getattr(self.instance, arg.name)
 
-            instance_handle = self._instance_action
-
-            class _InstanceAction(ArgAction):
-                def handle(
-                    self, option_dict, varargs=None, kwargs=None, raise_exception=False
-                ):
-                    return instance_handle(option_dict, varargs, kwargs)
-
-            main_action = _InstanceAction(lambda: None)
-            super().__init__(
-                config.get("command", obj_name),
-                main_args,
-                config.get("headers", []),
-                *_options,
-                meta=CommandMeta(
-                    description=config.get("description", main_help_text),
-                    raise_exception=config.get("raise_exception", True),
-                ),
-                action=main_action,
-                namespace=config.get("namespace", None),
-            )
-        else:
-            super().__init__(
-                config.get("command", obj_name),
-                config.get("headers", []),
-                *_options,
-                namespace=config.get("namespace", None),
-                meta=CommandMeta(
-                    description=config.get("description", main_help_text),
-                    raise_exception=config.get("raise_exception", True),
-                ),
-            )
+        super().__init__(
+            config.get("command", obj_name),
+            main_args,
+            config.get("headers", []),
+            *_options,
+            meta=CommandMeta(
+                description=config.get("description", main_help_text),
+                raise_exception=config.get("raise_exception", True),
+            ),
+            behaviors=[behavior],
+            namespace=config.get("namespace", None),
+        )
 
 
 def _from_object(
     target: Optional[Union[Type, object, FunctionType, MethodType, ModuleType]] = None,
     command: Optional[str] = None,
-    config: Optional[Dict[config_key, Any]] = None,
-) -> AlconnaMounter:
+    config: Optional[MountConfig] = None,
+):
     """
     通过解析传入的对象，生成 Alconna 实例的方法, 或者说是Fire-like的方式
 
     Examples:
 
-        >>> from arclet.alconna.tools import AlconnaFire
         >>> def test_func(a, b, c):
         ...     print(a, b, c)
         ...
@@ -921,7 +769,7 @@ def _argument(
     default: Optional[Any] = None,
     description: Optional[str] = None,
     required: bool = True,
-    action: Optional[Union[ArgAction, Callable]] = None,
+    action: Optional[Action] = None,
 ):
     """类似于 argparse.ArgumentParser.add_argument() 的方法"""
     opt = Option(
@@ -938,7 +786,6 @@ def _argument(
 
 
 AlconnaFormat = _from_format
-AlconnaString = _from_string
 AlconnaFire = _from_object
 Argument = _argument
 

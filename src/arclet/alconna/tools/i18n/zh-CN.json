@@ -1,0 +1,10 @@
+{
+  "tools": {
+    "actions.inclusion": "{target} 必须存在",
+    "actions.exclusion": "{left} 与 {right} 不能同时存在",
+    "actions.cooldown": "操作过于频繁",
+    "construct.decorate_error": "该行为必须在 @xxx.command() 之后",
+    "construct.format_error": "不明字段: {target}",
+    "construct.func_name_error": "函数名不能以 '_' 开头"
+  }
+}

@@ -1,5 +1,5 @@
 from typing import Optional
-from arclet.alconna import Alconna, Args, Option, Field
+from arclet.alconna import Alconna, Args, Option
 from src.arclet.alconna.tools import (
     AlconnaString,
     AlconnaFormat,
@@ -16,29 +16,36 @@ from src.arclet.alconna.tools import (
 
 
 def test_koishi_like():
-    con = AlconnaString("con <url:url>")
+    con = AlconnaString("con <url:url>").build()
     assert con.parse("con https://www.example.com").matched is True
-    con_1 = AlconnaString("con_1", "--foo <foo:str:123> [bar:bool]", "--bar &True")
+    con_1 = AlconnaString("con_1")\
+        .option("--foo", "<foo:str=123> [bar:bool]")\
+        .option("--bar", default=True)\
+        .usage("test USAGE")\
+        .build()
     assert con_1.parse("con_1 --bar").query("bar.value") is True
     assert con_1.parse("con_1 --foo").query("foo.args") == {"foo": "123"}
-    con_2 = AlconnaString("[!con_2|/con_2] <foo:str> <...bar>")
+    print(con_1.get_help())
+    con_2 = AlconnaString("[!con_2|/con_2] <foo:str> <...bar>").build()
     assert con_2.parse("!con_2 112 334").matched is True
     assert con_2.parse("con_2 112 334").matched is False
 
 
 def test_format_like():
-    con1 = AlconnaFormat("con1 {artist} {title:str} singer {name:str}")
+    con1 = AlconnaFormat("con1 {title:str} singer {name}")
     print('')
     print(repr(con1.get_help()))
-    assert con1.parse("con1 Nameless MadWorld").artist == "Nameless"
+    assert con1.parse("con1 MadWorld singer Nameless").name == "Nameless"
     con1_1 = AlconnaFormat("con1_1 user {target}", {"target": str})
-    assert con1_1.parse("con1_1 user Nameless").query("user.target") == "Nameless"
+    assert con1_1.parse("con1_1 user Nameless").query("target") == "Nameless"
     con1_2 = AlconnaFormat(
-        "con1_2 user {target} perm set {perm} {default}",
-        {"target": str, "perm": str, "default": Args["default", bool, True]},
+        "con1_2 user {target} perm set {key} {default}",
+        {"target": str, "key": str, "default": Args["default", bool, True]},
     )
     print(repr(con1_2.get_help()))
-    assert con1_2.parse("con1_2 user Nameless perm set Admin.set True").query("perm_set.default") is True
+    res = con1_2.parse("con1_2 user Nameless perm set Admin.set True")
+    assert res.query("default") is True
+    assert res.query("key") == "Admin.set"
 
 
 def test_fire_like_class():
@@ -53,21 +60,13 @@ def test_fire_like_class():
             """Test Function"""
             print(f"Hello {name} from {self.sender}")
 
-        class Repo:
-            def set(self, name):
-                print(f"set {name}")
-
-            class SubConfig:
-                description = "sub-test"
-
         class Config:
             command = "con2"
             description = "测试"
             extra = "reject"
-            get_subcommand = True
 
     con2 = AlconnaFire(MyClass)
-    assert con2.parse("con2 Alc talk Repo set hhh").matched is True
+    assert con2.parse("con2 Alc talk hhh").matched is True
     assert con2.parse("con2 talk Friend").query("talk.name") == "Friend"
     print('')
     print(repr(con2.get_help()))

@@ -1,10 +1,10 @@
 """Alconna ArgAction相关"""
 
 from datetime import datetime
+from tarina import lang
 from typing import Literal
 from dataclasses import dataclass, field
 from arclet.alconna.exceptions import OutBoundsBehave
-from arclet.alconna.config import config
 from arclet.alconna.arparma import Arparma, ArparmaBehavior
 
 
@@ -21,7 +21,7 @@ def exclusion(target_path: str, other_path: str):
         def operate(self, interface: "Arparma"):
             if interface.query(target_path) and interface.query(other_path):
                 raise OutBoundsBehave(
-                    config.lang.behavior_exclude_matched.format(target=target_path, other=other_path)
+                    lang.require("tools", "actions.exclusion").format(left=target_path, right=other_path)
                 )
 
     return _EXCLUSION()
@@ -42,7 +42,7 @@ def cool_down(seconds: float):
         def operate(self, interface: "Arparma"):
             current_time = datetime.now()
             if (current_time - self.last_time).total_seconds() < seconds:
-                raise OutBoundsBehave(config.lang.behavior_cooldown_matched)
+                raise OutBoundsBehave(lang.require("tools", "actions.cooldown"))
             else:
                 self.last_time = current_time
 
@@ -63,9 +63,9 @@ def inclusion(*targets: str, flag: Literal["any", "all"] = "any"):
             if flag == "all":
                 for target in targets:
                     if not interface.query(target):
-                        raise OutBoundsBehave(config.lang.behavior_inclusion_matched)
+                        raise OutBoundsBehave(lang.require("tools", "actions.inclusion").format(target=target))
             else:
                 all_count = len(targets) - sum(1 for target in targets if interface.query(target))
                 if all_count > 0:
-                    raise OutBoundsBehave(config.lang.behavior_inclusion_matched)
+                    raise OutBoundsBehave(lang.require("tools", "actions.inclusion"))
     return _Inclusion()

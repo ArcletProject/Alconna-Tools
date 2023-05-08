@@ -8,11 +8,10 @@ from nepattern import (
     Empty,
     MatchFailed,
     PatternModel,
-    lang,
-    pattern_map,
-    set_converter,
+    all_patterns,
 )
-
+from nepattern.context import global_patterns
+from tarina import lang
 from .debug import analyse_args
 
 TOrigin = TypeVar("TOrigin")
@@ -28,6 +27,7 @@ class ObjectPattern(BasePattern):
     ):
         self._args = Args()
         self._names = []
+        pmap = all_patterns()
         for param in inspect.signature(origin.__init__).parameters.values():
             name = param.name
             anno = param.annotation
@@ -42,11 +42,11 @@ class ObjectPattern(BasePattern):
             ):
                 continue
             if anno is Empty:
-                anno = pattern_map[str]
+                anno = pmap[str]
             elif inspect.isclass(anno) and issubclass(anno, str):
-                anno = pattern_map[str]
+                anno = pmap[str]
             elif inspect.isclass(anno) and issubclass(anno, int):
-                anno = pattern_map[int]
+                anno = pmap[int]
             if name in suppliers and inspect.isclass(anno):
                 _s_sig = inspect.signature(suppliers[name])
                 if len(_s_sig.parameters) == 1 or (
@@ -93,21 +93,24 @@ class ObjectPattern(BasePattern):
         super().__init__(
             model=PatternModel.TYPE_CONVERT, origin=origin, alias=origin.__name__
         )
-        set_converter(self)
+        global_patterns().set(self)
 
     def match(self, input_: Union[str, Any]) -> TOrigin:
         if isinstance(input_, self.origin):
             return input_  # type: ignore
         elif not isinstance(input_, str):
-            raise MatchFailed(lang.type_error.format(target=input_.__class__))
+            raise MatchFailed(lang.require("nepattern", "type_error").format(target=input_.__class__))
         if not (mat := self._re_pattern.fullmatch(input_)):
-            raise MatchFailed(lang.content_error.format(target=input_))
+            raise MatchFailed(lang.require("nepattern", "content_error").format(target=input_))
         if res := analyse_args(
             self._args, list(mat.groupdict().values()), raise_exception=False
         ):
             return self.origin(**res)
         else:
-            raise MatchFailed(lang.content_error.format(target=input_))
+            raise MatchFailed(lang.require("nepattern", "content_error").format(target=input_))
+
+    def __call__(self, *args, **kwargs):
+        return self.origin(*args, **kwargs)
 
     def __eq__(self, other):
         return isinstance(other, ObjectPattern) and self.origin == other.origin
