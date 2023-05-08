@@ -1,6 +1,6 @@
 from typing import List, Dict, Any, Union, Tuple, Optional
-from nepattern import Empty, AllParam, BasePattern
-
+from nepattern import Empty, AllParam
+from tarina import lang
 from arclet.alconna.args import Args, Arg
 from arclet.alconna.base import Subcommand, Option
 from arclet.alconna.formatter import TextFormatter, Trace
@@ -17,7 +17,7 @@ class ArgParserTextFormatter(TextFormatter):
         opt_names = [min(i.aliases, key=len) for i in filter(lambda x: isinstance(x, Option), parts)]
         sub_names = f"{{{','.join(sub_names)}}}" if sub_names else ""
         opt_names = (" ".join(f"[{i}]" for i in opt_names)) if opt_names else ""
-        topic = f"命令: {trace.head['name']} {opt_names}\n {sub_names}"
+        topic = f"{lang.require('tools', 'format.ap.title')}: {trace.head['name']} {opt_names}\n {sub_names}"
         header = self.header(trace.head, trace.separators)
         param = self.parameters(trace.args)
         body = self.body(parts)
@@ -25,16 +25,18 @@ class ArgParserTextFormatter(TextFormatter):
 
     def param(self, parameter: Arg) -> str:
         name = parameter.name
+        if str(parameter.value).strip("'\"") == name:
+            return f"[{name}]" if parameter.optional else name
+        if parameter.hidden:
+            return f"[{name.upper()}]" if parameter.optional else name.upper()
+        if parameter.value is AllParam:
+            return f"{name.upper()}..."
         arg = f"[{name.upper()}" if parameter.optional else name.upper()
-        if not parameter.hidden:
-            if parameter.value is AllParam:
-                return f"{name.upper()}..."
-            if isinstance(parameter.value, BasePattern):
-                arg += f":{parameter.value}"
-            if parameter.field.display is Empty:
-                arg += "=None"
-            elif parameter.field.display is not None:
-                arg += f"={parameter.field.display}"
+        arg += f":{parameter.value}"
+        if parameter.field.display is Empty:
+            arg += "=None"
+        elif parameter.field.display is not None:
+            arg += f"={parameter.field.display}"
         return f"{arg}]" if parameter.optional else arg
 
     def parameters(self, args: Args) -> str:
@@ -48,12 +50,13 @@ class ArgParserTextFormatter(TextFormatter):
                 sep = f"[{'|'.join(arg.separators)!r}]"
             res += self.param(arg) + sep
         notice = [(arg.name, arg.notice) for arg in args.argument if arg.notice]
-        return f"{res}\n  内容:\n  " + "\n  ".join(f"{v[0]}: {v[1]}" for v in notice) if notice else res
+        return f"{res}\n  {lang.require('tools', 'format.ap.notice')}:\n  " + \
+            "\n  ".join(f"{v[0]}: {v[1]}" for v in notice) if notice else res
 
     def header(self, root: Dict[str, Any], separators: Tuple[str, ...]) -> str:
-        help_string = f"\n描述: {desc}\n" if (desc := root.get("description")) else ""
-        usage = f"\n用法: {usage}\n" if (usage := root.get("usage")) else ""
-        example = f"\n样例: {example}\n" if (example := root.get("example")) else ""
+        help_string = f"\n{lang.require('tools', 'format.ap.desc')}: {desc}\n" if (desc := root.get("description")) else ""
+        usage = f"\n{lang.require('tools', 'format.ap.usage')}: {usage}\n" if (usage := root.get("usage")) else ""
+        example = f"\n{lang.require('tools', 'format.ap.example')}: {example}\n" if (example := root.get("example")) else ""
         header_text = (
             f"[{''.join(map(str, headers))}]"
             if (headers := root.get("header", [])) and headers != [""]
@@ -62,10 +65,7 @@ class ArgParserTextFormatter(TextFormatter):
         cmd = f"{header_text}{root.get('name', '')}"
         sep = separators[0]
         command_string = (cmd or root["name"]) + sep
-        return f"\n{command_string}%s{help_string}{usage}%s{example}"
-
-    def part(self, node: Union[Subcommand, Option]) -> str:
-        ...
+        return f"\n{command_string}%s{help_string}{usage}\n%s{example}"
 
     def body(self, parts: List[Union[Option, Subcommand]]) -> str:
         options = []
@@ -102,8 +102,8 @@ class ArgParserTextFormatter(TextFormatter):
         subcommand_string = "\n".join(
             f"{i.ljust(max_len)}    {j}" for i, j in zip(subcommands, sub_description)
         )
-        option_help = "选项:\n" if option_string else ""
-        subcommand_help = "子命令:\n" if subcommand_string else ""
+        option_help = f"{lang.require('tools', 'format.ap.opt')}:\n" if option_string else ""
+        subcommand_help = f"{lang.require('tools', 'format.ap.sub')}:\n" if subcommand_string else ""
         return f"{subcommand_help}{subcommand_string}\n{option_help}{option_string}\n"
 
 
@@ -113,11 +113,13 @@ class MarkdownTextFormatter(TextFormatter):
         """头部节点的描述"""
         root, separators = trace.head, trace.separators
         params, notice = self.parameters(trace.args)
-        notice_text = ("### 注释:\n```\n" + "\n".join(notice) + "\n```") if notice else ""
+        notice_text = (
+            f"### {lang.require('format', 'notice')}:\n```\n" + "\n".join(notice) + "\n```"
+        ) if notice else ""
         help_string = f"{desc}" if (desc := root.get("description")) else ""
         usage = f"\n{usage}" if (usage := root.get("usage")) else ""
         example = (
-            f"\n## 使用示例:\n```shell\n{example}\n```"
+            f"\n## {lang.require('format', 'example')}:\n```shell\n{example}\n```"
             if (example := root.get("example"))
             else ""
         )
@@ -132,10 +134,9 @@ class MarkdownTextFormatter(TextFormatter):
             tuple(separators)[0] if params else ""
         )
         body = self.body(trace.body)
-
         return (
             f"## {help_string}\n\n"
-            f"指令: \n\n"
+            f"{lang.require('tools', 'format.md.title')}: \n\n"
             f"**{command_string}{params}**\n"
             f"{notice_text}"
             f"{usage}\n\n"
@@ -146,16 +147,18 @@ class MarkdownTextFormatter(TextFormatter):
     def param(self, parameter: Arg) -> str:
         """对单个参数的描述"""
         name = parameter.name
+        if str(parameter.value).strip("'\"") == name:
+            return f"&#91;{name}&#93;" if parameter.optional else name
+        if parameter.hidden:
+            return f"&#91;{name}&#93;" if parameter.optional else f"&lt;{name}&gt;"
+        if parameter.value is AllParam:
+            return f"&lt;...{name}&gt;"
         arg = f"&#91;{name}" if parameter.optional else f"&lt;{name}"
-        if not parameter.hidden:
-            if parameter.value is AllParam:
-                return f"&lt;...{name}&gt;"
-            if not isinstance(parameter.value, BasePattern) or parameter.value.pattern != name:
-                arg += f":{parameter.value}"
-            if parameter.field.display is Empty:
-                arg += " = None"
-            elif parameter.field.display is not None:
-                arg += f" = {parameter.field.display} "
+        arg += f": {parameter.value}"
+        if parameter.field.display is Empty:
+            arg += " = None"
+        elif parameter.field.display is not None:
+            arg += f" = {parameter.field.display}"
         return f"{arg}&#93;" if parameter.optional else f"{arg}&gt;"
 
     def parameters(self, args: Args) -> Tuple[str, Optional[List[str]]]:
@@ -172,60 +175,69 @@ class MarkdownTextFormatter(TextFormatter):
         notice = [(arg.name, arg.notice) for arg in args.argument if arg.notice]
         return (res[:-1], [f"{v[0]}: {v[1]}" for v in notice]) if notice else (res[:-1], None)
 
-    def part(self, node: Union[Subcommand, Option]) -> str:
-        """每个子节点的描述"""
-        if isinstance(node, Subcommand):
-            name = " ".join(node.requires) + (" " if node.requires else "") + node.name
-            option_string = "\n".join(self.part(i) for i in node.options)
-            option_help = "### 该子命令内可用的选项有:\n " if option_string else ""
-            param, notice = self.parameters(node.args)
-            help_text = "> Unknown" if node.help_text == node.dest else f"> {node.help_text}"
-            notice_text = (
-                (f"\n>\n> #### 注释:\n> " + "\n> ".join(notice)) if notice else ""
+    def opt(self, node: Option) -> str:
+        alias_text = (
+            " ".join(node.requires)
+            + (" " if node.requires else "")
+            + (
+                f"&#91;{'|'.join(node.aliases)}&#93;"
+                if len(node.aliases) >= 2
+                else node.name
             )
-            return (
-                f"- **{name + (tuple(node.separators)[0] if param else '')}"
-                f"{param}**\n"
-                f"{help_text}"
-                f"{notice_text}\n"
-                f"{option_help}{option_string}"
-            )
-        elif isinstance(node, Option):
-            alias_text = (
-                " ".join(node.requires)
-                + (" " if node.requires else "")
-                + (
-                    f"&#91;{'|'.join(node.aliases)}&#93;"
-                    if len(node.aliases) >= 2
-                    else "".join(node.aliases)
-                )
-            )
-            help_text = "> Unknown" if node.help_text == node.dest else f"> {node.help_text}"
-            param, notice = self.parameters(node.args)
-            notice_text = (
-                (f"\n>\n> #### 注释:\n> " + "\n> ".join(notice)) if notice else ""
-            )
-            return (
-                f"- **{alias_text + (tuple(node.separators)[0] if param else '')}"
-                f"{param.strip(' ')}**\n"
-                f"{help_text}"
-                f"{notice_text}\n"
-            )
-        else:
-            raise TypeError(f"{node} is not a valid node")
+        )
+        help_text = "> Unknown" if node.help_text == node.dest else f"> {node.help_text}"
+        param, notice = self.parameters(node.args)
+        notice_text = (
+            (f"\n>\n> #### {lang.require('format', 'notice')}:\n> " + "\n> ".join(notice)) if notice else ""
+        )
+        return (
+            f"- **{alias_text + (tuple(node.separators)[0] if param else '')}"
+            f"{param.strip(' ')}**\n"
+            f"{help_text}"
+            f"{notice_text}\n"
+        )
+
+    def sub(self, node: Subcommand) -> str:
+        """对单个子命令的描述"""
+        name = " ".join(node.requires) + (" " if node.requires else "") + node.name
+        opt_string = "\n".join(
+            [self.opt(opt) for opt in filter(lambda x: isinstance(x, Option), node.options)]
+        )
+        sub_string = "".join(
+            [
+                self.opt(sub) # type: ignore
+                for sub in filter(lambda x: isinstance(x, Subcommand), node.options)
+            ]
+        )
+        opt_help = f"### {lang.require('format', 'subcommands.opts')}:\n" if opt_string else ""
+        sub_help = f"### {lang.require('format', 'subcommands.subs')}:\n" if sub_string else ""
+        param, notice = self.parameters(node.args)
+        help_text = "> Unknown" if node.help_text == node.dest else f"> {node.help_text}"
+        notice_text = (
+            (f"\n>\n> #### {lang.require('format', 'notice')}:\n> " + "\n> ".join(notice)) if notice else ""
+        )
+        return (
+            f"- **{name + (tuple(node.separators)[0] if param else '')}"
+            f"{param}**\n"
+            f"{help_text}"
+            f"{notice_text}\n"
+            f"{sub_help}{sub_string}"
+            f"{opt_help}{opt_string}"
+        )
 
     def body(self, parts: List[Union[Option, Subcommand]]) -> str:
         """子节点列表的描述"""
         option_string = "\n".join(
-            self.part(opt)
-            for opt in filter(lambda x: isinstance(x, Option), parts)
-            if opt.name not in self.ignore_names
+            [
+                self.opt(opt) for opt in filter(lambda x: isinstance(x, Option), parts)
+                if opt.name not in self.ignore_names
+            ]
         )
         subcommand_string = "\n".join(
-            self.part(sub) for sub in filter(lambda x: isinstance(x, Subcommand), parts)
+            [self.sub(sub) for sub in filter(lambda x: isinstance(x, Subcommand), parts)]
         )
-        option_help = "## 可用的选项有:\n" if option_string else ""
-        subcommand_help = "## 可用的子命令有:\n" if subcommand_string else ""
+        option_help = f"## {lang.require('format', 'options')}:\n" if option_string else ""
+        subcommand_help = f"## {lang.require('format', 'subcommands')}:\n" if subcommand_string else ""
         return f"{subcommand_help}{subcommand_string}{option_help}{option_string}"
 
 
@@ -257,7 +269,8 @@ class _RichTextFormatter(TextFormatter):
         opt_names = [min(i.aliases, key=len) for i in filter(lambda x: isinstance(x, Option), parts)]
         sub_names = self._convert(f"{{{','.join(sub_names)}}}\n", "info") if sub_names else ""
         opt_names = self._convert((" ".join(f"[{i}]" for i in opt_names)), 'info') if opt_names else ""
-        topic = f"{self._convert('命令:', 'warn')} {self._convert(trace.head['name'], 'msg')} {opt_names}\n {sub_names}"
+        title = f"{lang.require('tools', 'format.ap.title')}:"
+        topic = f"{self._convert(title, 'warn')} {self._convert(trace.head['name'], 'msg')} {opt_names}\n {sub_names}"
         header = self.header(trace.head, trace.separators)
         param = self._convert(self.parameters(trace.args), "success")
         body = self.body(parts)
@@ -265,9 +278,14 @@ class _RichTextFormatter(TextFormatter):
 
     def param(self, parameter: Arg) -> str:
         name = parameter.name
-        arg = f"[{name.upper()}" if parameter.optional else name.upper()
+        if str(parameter.value).strip("'\"") == name:
+            return f"[{name}]" if parameter.optional else name
+        if parameter.hidden:
+            return f"[{name.upper()}]" if parameter.optional else name.upper()
         if parameter.value is AllParam:
             return f"{name.upper()}..."
+        arg = f"[{name.upper()}" if parameter.optional else name.upper()
+        arg += f":{parameter.value}"
         if parameter.field.display is Empty:
             arg += "=None"
         elif parameter.field.display is not None:
@@ -285,12 +303,17 @@ class _RichTextFormatter(TextFormatter):
                 sep = f"[{'|'.join(arg.separators)!r}]"
             res += self.param(arg) + sep
         notice = [(arg.name, arg.notice) for arg in args.argument if arg.notice]
-        return f"{res}\n  内容:\n  " + "\n  ".join(f"{v[0]}: {v[1]}" for v in notice) if notice else res
+        return f"{res}\n  {lang.require('tools', 'format.ap.notice')}:\n  " + \
+            "\n  ".join(f"{v[0]}: {v[1]}" for v in notice) if notice else res
+
 
     def header(self, root: Dict[str, Any], separators: Tuple[str, ...]) -> str:
-        help_string = f"\n{self._convert('描述:', 'warn')} {desc}\n" if (desc := root.get("description")) else ""
-        usage = f"\n{self._convert('用法:', 'warn')} {usage}\n" if (usage := root.get("usage")) else ""
-        example = f"\n{self._convert('样例:', 'warn')} {example}\n" if (example := root.get("example")) else ""
+        _desc = f"{lang.require('tools', 'format.ap.desc')}:"
+        _usage = f"{lang.require('tools', 'format.ap.usage')}:"
+        _example = f"{lang.require('tools', 'format.ap.example')}:"
+        help_string = f"\n{self._convert(_desc, 'warn')} {desc}\n" if (desc := root.get("description")) else ""
+        usage = f"\n{self._convert(_usage, 'warn')} {usage}\n" if (usage := root.get("usage")) else ""
+        example = f"\n{self._convert(_example, 'warn')} {example}\n" if (example := root.get("example")) else ""
         header_text = (
             f"[{''.join(map(str, headers))}]"
             if (headers := root.get("header", [])) and headers != [""]
@@ -299,7 +322,7 @@ class _RichTextFormatter(TextFormatter):
         cmd = f"{header_text}{root.get('name', '')}"
         sep = separators[0]
         command_string = self._convert((cmd or root["name"]) + sep, "success")
-        return f"\n{command_string}%s{help_string}{usage}%s{example}"
+        return f"\n{command_string}%s{help_string}{usage}\n%s{example}"
 
     def body(self, parts: List[Union[Option, Subcommand]]) -> str:
         options = []
@@ -342,8 +365,10 @@ class _RichTextFormatter(TextFormatter):
         subcommand_string = "\n".join(
             f"{i.ljust(max_len)}    {j}" for i, j in zip(subcommands, sub_description)
         )
-        option_help = f"{self._convert('选项:', 'warn')}\n" if option_string else ""
-        subcommand_help = f"{self._convert('子命令:', 'warn')}\n" if subcommand_string else ""
+        _opt = f"{lang.require('tools', 'format.ap.opt')}:"
+        _sub = f"{lang.require('tools', 'format.ap.sub')}:"
+        option_help = f"{self._convert(_opt, 'warn')}\n" if option_string else ""
+        subcommand_help = f"{self._convert(_sub, 'warn')}\n" if subcommand_string else ""
         return f"{subcommand_help}{subcommand_string}\n{option_help}{option_string}\n"
 
 class RichTextFormatter(_RichTextFormatter):

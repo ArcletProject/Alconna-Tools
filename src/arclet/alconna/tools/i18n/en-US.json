@@ -5,6 +5,14 @@
     "actions.cooldown": "Your action is too frequent",
     "construct.decorate_error": "This action must behind a @xxx.command()",
     "construct.format_error": "Unidentified segment: {target}",
-    "construct.func_name_error": "function name can not start with '_'"
+    "construct.func_name_error": "function name can not start with '_'",
+    "format.ap.title": "Usage",
+    "format.ap.notice": "Content",
+    "format.ap.desc": "Info",
+    "format.ap.usage": "Detail",
+    "format.ap.example": "Example",
+    "format.ap.opt": "Options",
+    "format.ap.sub": "Commands",
+    "format.md.title": "Command"
   }
 }

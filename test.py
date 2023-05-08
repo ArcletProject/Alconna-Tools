@@ -201,7 +201,7 @@ def test_formatter():
         Option("aaa baz|bar|baf"),
         Option("aaa fox"),
         Option("aaa bbb fire"),
-        Subcommand("--qux", Option("aaa"), Option("bbb", Args["ccc#ddd", bool]), Args["a"]),
+        Subcommand("qux", Option("aaa"), Option("bbb", Args["ccc#ddd", bool]), Args["a"]),
         formatter_type=ArgParserTextFormatter,
         meta=CommandMeta("text1111", "text2222", "text3333")
     )
