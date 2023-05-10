@@ -429,6 +429,12 @@ class AlconnaString:
         return arg
 
     def __init__(self, command: str, help_text: Optional[str] = None):
+        """创建 AlconnaString
+
+        Args:
+            command (str): 命令字符串, 例如 `test <message:str:hello> #HELP_STRING`
+            help_text (Optional[str], optional): 选填的命令的帮助文本.
+        """
         self.buffer = {}
         self.options = []
         self.meta = CommandMeta(description=help_text, fuzzy_match=True)
@@ -444,6 +450,14 @@ class AlconnaString:
         self.buffer["main_args"] = args_from_list(args, custom_types.copy())
 
     def option(self, name: str, opt: Optional[str] = None, default: Any = None, action: Optional[Action] = None):
+        """添加一个选项
+
+        Args:
+            name (str): 选项的实际名称
+            opt (Optional[str], optional): 选项的字符串, 例如 `--foo -f <val:bool>`.
+            default (Any, optional): 选项的默认值.
+            action (Optional[Action], optional): 选项的动作.
+        """
         if opt is None:
             self.options.append(
                 Option(name, default=default, action=action)
@@ -472,14 +486,17 @@ class AlconnaString:
         return self
 
     def usage(self, content: str):
+        """设置命令的使用方法"""
         self.meta.usage = content
         return self
 
     def example(self, content: str):
+        """设置命令的使用示例"""
         self.meta.example = content
         return self
 
     def build(self):
+        """构造为 Alconna 对象"""
         return Alconna(*self.buffer.values(), *self.options, meta=self.meta)
 
 class MountConfig(TypedDict):

@@ -10,7 +10,7 @@ from src.arclet.alconna.tools import (
     exclusion,
     cool_down,
     simple_type,
-    ArgParserTextFormatter,
+    ShellTextFormatter,
     MarkdownTextFormatter
 )
 
@@ -19,7 +19,7 @@ def test_koishi_like():
     con = AlconnaString("con <url:url>").build()
     assert con.parse("con https://www.example.com").matched is True
     con_1 = AlconnaString("con_1")\
-        .option("--foo", "<foo:str=123> [bar:bool]")\
+        .option("foo", "--foo <foo:str=123> [bar:bool]")\
         .option("--bar", default=True)\
         .usage("test USAGE")\
         .build()
@@ -29,6 +29,12 @@ def test_koishi_like():
     con_2 = AlconnaString("[!con_2|/con_2] <foo:str> <...bar>").build()
     assert con_2.parse("!con_2 112 334").matched is True
     assert con_2.parse("con_2 112 334").matched is False
+    con_3 = AlconnaString("test")\
+        .option("writer", "-w <id:int>")\
+        .option("writer", "--anonymous", default=0)\
+        .build()
+    assert con_3.parse("test -w 123").query("writer.id") == 123
+    assert con_3.parse("test --anonymous").query("writer.value") == 0
 
 
 def test_format_like():
@@ -202,7 +208,7 @@ def test_formatter():
         Option("aaa fox"),
         Option("aaa bbb fire"),
         Subcommand("qux", Option("aaa"), Option("bbb", Args["ccc#ddd", bool]), Args["a"]),
-        formatter_type=ArgParserTextFormatter,
+        formatter_type=ShellTextFormatter,
         meta=CommandMeta("text1111", "text2222", "text3333")
     )
     alc1.parse("!test2 bbb --help")

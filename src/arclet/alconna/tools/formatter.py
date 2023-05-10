@@ -1,14 +1,14 @@
 from typing import List, Dict, Any, Union, Tuple, Optional
-from nepattern import Empty, AllParam
+from nepattern import Empty, AllParam, AnyOne, AnyString
 from tarina import lang
 from arclet.alconna.args import Args, Arg
 from arclet.alconna.base import Subcommand, Option
 from arclet.alconna.formatter import TextFormatter, Trace
 
 
-class ArgParserTextFormatter(TextFormatter):
+class ShellTextFormatter(TextFormatter):
     """
-    argparser 风格的帮助文本格式化器
+    shell 风格的帮助文本格式化器
     """
 
     def format(self, trace: Trace) -> str:
@@ -21,7 +21,7 @@ class ArgParserTextFormatter(TextFormatter):
         header = self.header(trace.head, trace.separators)
         param = self.parameters(trace.args)
         body = self.body(parts)
-        return f"{topic}\n{header % (param, body)}"
+        return header % (topic, param, body)
 
     def param(self, parameter: Arg) -> str:
         name = parameter.name
@@ -32,7 +32,8 @@ class ArgParserTextFormatter(TextFormatter):
         if parameter.value is AllParam:
             return f"{name.upper()}..."
         arg = f"[{name.upper()}" if parameter.optional else name.upper()
-        arg += f":{parameter.value}"
+        if parameter.value not in (AnyOne, AnyString):
+            arg += f":{parameter.value}"
         if parameter.field.display is Empty:
             arg += "=None"
         elif parameter.field.display is not None:
@@ -50,11 +51,11 @@ class ArgParserTextFormatter(TextFormatter):
                 sep = f"[{'|'.join(arg.separators)!r}]"
             res += self.param(arg) + sep
         notice = [(arg.name, arg.notice) for arg in args.argument if arg.notice]
-        return f"{res}\n  {lang.require('tools', 'format.ap.notice')}:\n  " + \
-            "\n  ".join(f"{v[0]}: {v[1]}" for v in notice) if notice else res
+        return f"{res}\n{lang.require('tools', 'format.ap.notice')}:\n  - " + \
+            "\n  - ".join(f"{v[0]}: {v[1]}" for v in notice) if notice else res
 
     def header(self, root: Dict[str, Any], separators: Tuple[str, ...]) -> str:
-        help_string = f"\n{lang.require('tools', 'format.ap.desc')}: {desc}\n" if (desc := root.get("description")) else ""
+        help_string = f"{desc}\n" if (desc := root.get("description")) else ""
         usage = f"\n{lang.require('tools', 'format.ap.usage')}: {usage}\n" if (usage := root.get("usage")) else ""
         example = f"\n{lang.require('tools', 'format.ap.example')}: {example}\n" if (example := root.get("example")) else ""
         header_text = (
@@ -65,7 +66,7 @@ class ArgParserTextFormatter(TextFormatter):
         cmd = f"{header_text}{root.get('name', '')}"
         sep = separators[0]
         command_string = (cmd or root["name"]) + sep
-        return f"\n{command_string}%s{help_string}{usage}\n%s{example}"
+        return f"{help_string}\n%s\n\n{command_string}%s{usage}\n%s{example}"
 
     def body(self, parts: List[Union[Option, Subcommand]]) -> str:
         options = []
@@ -154,7 +155,8 @@ class MarkdownTextFormatter(TextFormatter):
         if parameter.value is AllParam:
             return f"&lt;...{name}&gt;"
         arg = f"&#91;{name}" if parameter.optional else f"&lt;{name}"
-        arg += f": {parameter.value}"
+        if parameter.value not in (AnyOne, AnyString):
+            arg += f": {parameter.value}"
         if parameter.field.display is Empty:
             arg += " = None"
         elif parameter.field.display is not None:
@@ -274,7 +276,7 @@ class _RichTextFormatter(TextFormatter):
         header = self.header(trace.head, trace.separators)
         param = self._convert(self.parameters(trace.args), "success")
         body = self.body(parts)
-        return f"{topic}{header % (param, body)}"
+        return header % (topic, param, body)
 
     def param(self, parameter: Arg) -> str:
         name = parameter.name
@@ -285,7 +287,8 @@ class _RichTextFormatter(TextFormatter):
         if parameter.value is AllParam:
             return f"{name.upper()}..."
         arg = f"[{name.upper()}" if parameter.optional else name.upper()
-        arg += f":{parameter.value}"
+        if parameter.value not in (AnyOne, AnyString):
+            arg += f":{parameter.value}"
         if parameter.field.display is Empty:
             arg += "=None"
         elif parameter.field.display is not None:
@@ -303,15 +306,15 @@ class _RichTextFormatter(TextFormatter):
                 sep = f"[{'|'.join(arg.separators)!r}]"
             res += self.param(arg) + sep
         notice = [(arg.name, arg.notice) for arg in args.argument if arg.notice]
-        return f"{res}\n  {lang.require('tools', 'format.ap.notice')}:\n  " + \
-            "\n  ".join(f"{v[0]}: {v[1]}" for v in notice) if notice else res
+        _not = self._convert(f"{lang.require('tools', 'format.ap.notice')}:", 'warn')
+        return f"{res}\n{_not}\n  - " + \
+            "\n  - ".join(self._convert(f"{v[0]}: {v[1]}", "success") for v in notice) if notice else res
 
 
     def header(self, root: Dict[str, Any], separators: Tuple[str, ...]) -> str:
-        _desc = f"{lang.require('tools', 'format.ap.desc')}:"
         _usage = f"{lang.require('tools', 'format.ap.usage')}:"
         _example = f"{lang.require('tools', 'format.ap.example')}:"
-        help_string = f"\n{self._convert(_desc, 'warn')} {desc}\n" if (desc := root.get("description")) else ""
+        help_string = f"{desc}\n" if (desc := root.get("description")) else ""
         usage = f"\n{self._convert(_usage, 'warn')} {usage}\n" if (usage := root.get("usage")) else ""
         example = f"\n{self._convert(_example, 'warn')} {example}\n" if (example := root.get("example")) else ""
         header_text = (
@@ -321,8 +324,8 @@ class _RichTextFormatter(TextFormatter):
         )
         cmd = f"{header_text}{root.get('name', '')}"
         sep = separators[0]
-        command_string = self._convert((cmd or root["name"]) + sep, "success")
-        return f"\n{command_string}%s{help_string}{usage}\n%s{example}"
+        command_string = self._convert((cmd or root["name"]) + sep, "msg")
+        return f"{help_string}\n%s\n\n{command_string}%s{usage}\n%s{example}"
 
     def body(self, parts: List[Union[Option, Subcommand]]) -> str:
         options = []

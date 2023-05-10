@@ -3,7 +3,7 @@
 
 [[package]]
 name = "arclet-alconna"
-version = "1.7.0rc5"
+version = "1.7.0rc6"
 requires_python = ">=3.8"
 summary = "A High-performance, Generality, Humane Command Line Arguments Parser Library."
 dependencies = [
@@ -136,12 +136,12 @@ summary = "Backported and Experimental Type Hints for Python 3.7+"
 [metadata]
 lock_version = "4.2"
 groups = ["default", "dev"]
-content_hash = "sha256:bb22ce9e18886fd58f9af4bbfe3cb5040d4868134a8168945fd4b54b8e2472be"
+content_hash = "sha256:fa8184e2d34faeedd3b703964706ad7f41362e35faf2855a73c92fd89c3113c0"
 
 [metadata.files]
-"arclet-alconna 1.7.0rc5" = [
-    {url = "https://files.pythonhosted.org/packages/9e/5c/3abd0a7e5c1225ed82ba3eaabc212fe0692932620e52461d145054d293b8/arclet-alconna-1.7.0rc5.tar.gz", hash = "sha256:e40a9e29fd5dadb2cc24c363660d38870491a2d930e2a9116b7134a3be17d85a"},
-    {url = "https://files.pythonhosted.org/packages/dc/7d/17fdfd9edcf02918f517e9d789be6b5b31d81aa87400a3ade05768d7a287/arclet_alconna-1.7.0rc5-py3-none-any.whl", hash = "sha256:a3d2c3e2a12d4bbcff1dec8fd99121ed2c7adb7cea9f562ab386e33276602fec"},
+"arclet-alconna 1.7.0rc6" = [
+    {url = "https://files.pythonhosted.org/packages/23/70/3217c977773fb60e7287b841970c6711915906f9d8e84ff33046ad670542/arclet_alconna-1.7.0rc6-py3-none-any.whl", hash = "sha256:ce1a7a79717cf4a04d88754a19b3e147996f89e5f70d37d24636f83b658398c2"},
+    {url = "https://files.pythonhosted.org/packages/a0/53/924ff1a49168a07100e082f7a78e47c4384b9c1c7e056b8a687259046c7a/arclet-alconna-1.7.0rc6.tar.gz", hash = "sha256:6e076443ece1a4dfe23bc62aab9ebba838dcecccf11ea7172bffa16d5d38c834"},
 ]
 "colorama 0.4.5" = [
     {url = "https://files.pythonhosted.org/packages/2b/65/24d033a9325ce42ccbfa3ca2d0866c7e89cc68e5b9d92ecaba9feef631df/colorama-0.4.5.tar.gz", hash = "sha256:e6c6b4334fc50988a639d9b98aa429a0b57da6e17b9a44f0451f930b6967b7a4"},
