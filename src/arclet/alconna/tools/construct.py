@@ -538,18 +538,80 @@ def visit_config(obj: Any):
         result = {k: getattr(config, k) for k in config_keys if k in dir(config)}
     return result
 
+
 @dataclass(unsafe_hash=True)
 class CallbackHandler(ArparmaBehavior):
     main_call: Optional[Callable] = field(default=None)
     options: Dict[str, Callable] = field(default_factory=dict, hash=False)
 
     def operate(self, interface: Arparma):
-        self.before_operate(interface)
         if call := self.main_call:
             call(**interface.main_args)
         for path, action in self.options.items():
-            if d := interface.query(path, None):
+            if (d := interface.query(path, None)) is not None:
                 action(**d)
+
+
+class SubClassMounter(Subcommand):
+
+    def _get_instance(self):
+        return self.instance
+
+    def _inject_instance(self, target: Callable):
+        @wraps(target)
+        def wrapper(*args, **kwargs):
+            return target(self._get_instance(), *args, **kwargs)
+
+        return wrapper
+
+    def __init__(self, mount_cls: Type, upper_handler: CallbackHandler, upper_path: str):
+        self.mount_cls = mount_cls
+        self.instance: mount_cls = None
+        config = visit_config(mount_cls)
+        members = inspect.getmembers(
+            mount_cls, lambda x: inspect.isfunction(x) or inspect.ismethod(x)
+        )
+
+        _options = []
+        main_help_text = (
+            mount_cls.__doc__ or mount_cls.__init__.__doc__ or mount_cls.__name__
+        )
+
+        main_args = Args.from_callable(mount_cls.__init__)[0]
+
+        def _main_func(**kwargs):
+            if self.instance is None:
+                self.instance = mount_cls(**kwargs)
+                for key, value in kwargs.items():
+                    self.args[key].field.default = value
+            else:
+                for k, v in kwargs.items():
+                    setattr(self.instance, k, v)
+        path = f"subcommands.{upper_path}.{mount_cls.__name__}" if upper_path else f"subcommands.{mount_cls.__name__}"
+        upper_handler.options[f"{path}.args"] = _main_func
+        for name, func in filter(lambda x: not x[0].startswith("_"), members):
+            help_text = func.__doc__ or name
+            _opt_args, method = Args.from_callable(func)
+            if method:
+                func = self._inject_instance(func)
+            _options.append(
+                Option(name, _opt_args, help_text=help_text)
+            )
+            upper_handler.options[f"{path}.options.{name}.args"] = func
+
+        _options.extend(
+            SubClassMounter(cls, upper_handler, path)
+            for name, cls in inspect.getmembers(mount_cls, inspect.isclass)
+            if not name.startswith("_") and not name.endswith("Config")
+        )
+
+        super().__init__(
+            config.get("command", mount_cls.__name__),
+            main_args,
+            *_options,
+            help_text=config.get("description", main_help_text),
+        )
+
 
 class FuncMounter(Alconna):
     def __init__(
@@ -598,6 +660,11 @@ class ModuleMounter(Alconna):
                 )
             )
             behavior.options[f"options.{name}.args"] = func
+        _options.extend(
+            SubClassMounter(cls, behavior, "")
+            for name, cls in inspect.getmembers(module, inspect.isclass)
+            if not name.startswith("_") and not name.endswith("Config")
+        )
         super().__init__(
             config.get("command", module.__name__),
             config.get("headers", []),
@@ -660,6 +727,12 @@ class ClassMounter(Alconna):
                 Option(name, _opt_args, help_text=help_text)
             )
             behavior.options[f"options.{name}.args"] = func
+
+        _options.extend(
+            SubClassMounter(cls, behavior, "")
+            for name, cls in inspect.getmembers(mount_cls, inspect.isclass)
+            if not name.startswith("_") and not name.endswith("Config")
+        )
         super().__init__(
             config.get("command", mount_cls.__name__),
             main_args,
@@ -701,6 +774,12 @@ class ObjectMounter(Alconna):
                 )
             )
             behavior.options[f"options.{name}.args"] = func
+
+        _options.extend(
+            SubClassMounter(cls, behavior, "")
+            for name, cls in inspect.getmembers(obj, inspect.isclass)
+            if not name.startswith("_")
+        )
         main_args = Args.from_callable(obj.__init__)[0]
         for arg in main_args.argument:
             if hasattr(self.instance, arg.name):

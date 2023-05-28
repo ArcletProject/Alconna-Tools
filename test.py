@@ -66,16 +66,23 @@ def test_fire_like_class():
             """Test Function"""
             print(f"Hello {name} from {self.sender}")
 
+        class MySub:
+            def __init__(self, name):
+                self.name = name
+
+            def output(self):
+                print("\tsub output: ", self.name)
+
         class Config:
             command = "con2"
             description = "测试"
             extra = "reject"
-
+    print('')
     con2 = AlconnaFire(MyClass)
     assert con2.parse("con2 Alc talk hhh").matched is True
-    assert con2.parse("con2 talk Friend").query("talk.name") == "Friend"
+    assert con2.parse("con2 talk Friend MySub abc output").query("talk.name") == "Friend"
     print('')
-    print(repr(con2.get_help()))
+    print(con2.get_help())
     print(con2.instance)
 
 
