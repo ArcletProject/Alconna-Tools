@@ -14,10 +14,12 @@ from typing import (
     List,
     Optional,
     Type,
+    Tuple,
     TypeVar,
     Union,
     cast,
     TypedDict,
+    overload
 )
 
 
@@ -509,8 +511,8 @@ class MountConfig(TypedDict):
 
 config_keys = ("prefixes", "raise_exception", "description", "namespace", "command")
 
-def visit_config(obj: Any):
-    result = {}
+def visit_config(obj: Any, base: Optional[MountConfig] = None) -> MountConfig:
+    result: MountConfig = base or {}
     if isinstance(obj, (FunctionType, MethodType)):
         codes, _ = inspect.getsourcelines(obj)
         _get_config = False
@@ -530,12 +532,12 @@ def visit_config(obj: Any):
                     continue
                 _contents = re.split(r"\s*=\s*", line.strip())
                 if len(_contents) == 2 and _contents[0] in config_keys:
-                    result[_contents[0]] = eval(_contents[1])
-    elif config := inspect.getmembers(
+                    result[_contents[0]] = eval(_contents[1])  # type: ignore
+    elif kss := inspect.getmembers(
         obj, lambda x: inspect.isclass(x) and x.__name__.endswith("Config")
     ):
-        config = config[0][1]
-        result = {k: getattr(config, k) for k in config_keys if k in dir(config)}
+        ks = kss[0][1]
+        result.update({k: getattr(ks, k) for k in config_keys if k in dir(ks)})
     return result
 
 
@@ -543,13 +545,18 @@ def visit_config(obj: Any):
 class CallbackHandler(ArparmaBehavior):
     main_call: Optional[Callable] = field(default=None)
     options: Dict[str, Callable] = field(default_factory=dict, hash=False)
+    results: Dict[str, Any] = field(default_factory=dict, hash=False)
+
+    def before_operate(self, interface: Arparma):
+        super().before_operate(interface)
+        self.results.clear()
 
     def operate(self, interface: Arparma):
         if call := self.main_call:
             call(**interface.main_args)
         for path, action in self.options.items():
             if (d := interface.query(path, None)) is not None:
-                action(**d)
+                self.results[action.__qualname__] = action(**d)
 
 
 class SubClassMounter(Subcommand):
@@ -613,11 +620,13 @@ class SubClassMounter(Subcommand):
         )
 
 
-class FuncMounter(Alconna):
+class FuncMounter(Alconna[TDC], Generic[T, TDC]):
+    target: Callable[..., T]
+
     def __init__(
-        self, func: Union[FunctionType, MethodType], config: Optional[MountConfig] = None
+        self, func: Callable[..., T], config: Optional[MountConfig] = None
     ):
-        config = config or visit_config(func)
+        config = visit_config(func, config)
         func_name = func.__name__
         if func_name.startswith("_"):
             raise ValueError(lang.require("tools", "construct.func_name_error"))
@@ -626,7 +635,7 @@ class FuncMounter(Alconna):
             self.instance = func.__self__
             func = cast(FunctionType, partial(func, self.instance))
         super(FuncMounter, self).__init__(
-            config.get("headers", []),
+            config.get("prefixes", []),
             config.get("command", func_name),
             _args,
             meta=CommandMeta(
@@ -635,18 +644,31 @@ class FuncMounter(Alconna):
             ),
             namespace=config.get("namespace", None),
         )
+        self.target = func
         self.bind()(func)
 
+    def exec(self, message: TDC) -> Tuple[Arparma[TDC], Optional[T]]:
+        try:
+            arp = self._parse(message)
+        except NullMessage as e:
+            if self.meta.raise_exception:
+                raise e
+            return Arparma(self.path, message, False, error_info=e), None
+        if arp.matched:
+            arp = arp.execute(self.behaviors)
+            return arp, arp.call(self.target)
+        return arp, None
+
 class ModuleMounter(Alconna):
-    def __init__(self, module: ModuleType, config: Optional[dict] = None):
+    def __init__(self, module: ModuleType, config: Optional[MountConfig] = None):
         self.mount_cls = module.__class__
         self.instance = module
-        config = config or visit_config(module)
+        config = config or visit_config(module, config)
         _options = []
         members = inspect.getmembers(
             module, lambda x: inspect.isfunction(x) or inspect.ismethod(x)
         )
-        behavior = CallbackHandler()
+        self.cb_behavior = CallbackHandler()
         for name, func in members:
             if name.startswith("_") or func.__name__.startswith("_"):
                 continue
@@ -659,15 +681,15 @@ class ModuleMounter(Alconna):
                     name, args=_opt_args, help_text=help_text
                 )
             )
-            behavior.options[f"options.{name}.args"] = func
+            self.cb_behavior.options[f"options.{name}.args"] = func
         _options.extend(
-            SubClassMounter(cls, behavior, "")
+            SubClassMounter(cls, self.cb_behavior, "")
             for name, cls in inspect.getmembers(module, inspect.isclass)
             if not name.startswith("_") and not name.endswith("Config")
         )
         super().__init__(
             config.get("command", module.__name__),
-            config.get("headers", []),
+            config.get("prefixes", []),
             *_options,
             namespace=config.get("namespace", None),
             meta=CommandMeta(
@@ -676,13 +698,18 @@ class ModuleMounter(Alconna):
                 ),
                 raise_exception=config.get("raise_exception", True),
             ),
-            behaviors=[behavior],
+            behaviors=[self.cb_behavior],
         )
 
+    def get_result(self, func: Callable):
+        return self.cb_behavior.results.get(func.__qualname__)
 
-class ClassMounter(Alconna):
 
-    def _get_instance(self):
+class ClassMounter(Alconna[TDC], Generic[T, TDC]):
+    mount_cls: Type[T]
+    instance: T
+
+    def _get_instance(self) -> T:
         return self.instance
 
     def _inject_instance(self, target: Callable):
@@ -692,10 +719,10 @@ class ClassMounter(Alconna):
 
         return wrapper
 
-    def __init__(self, mount_cls: Type, config: Optional[MountConfig] = None):
+    def __init__(self, mount_cls: Type[T], config: Optional[MountConfig] = None):
         self.mount_cls = mount_cls
         self.instance: mount_cls = None
-        config = config or visit_config(mount_cls)
+        config = config or visit_config(mount_cls, config)
         members = inspect.getmembers(
             mount_cls, lambda x: inspect.isfunction(x) or inspect.ismethod(x)
         )
@@ -717,7 +744,7 @@ class ClassMounter(Alconna):
                     setattr(self.instance, k, v)
 
 
-        behavior = CallbackHandler(main_call=_main_func)
+        self.cb_behavior = CallbackHandler(main_call=_main_func)
         for name, func in filter(lambda x: not x[0].startswith("_"), members):
             help_text = func.__doc__ or name
             _opt_args, method = Args.from_callable(func)
@@ -726,29 +753,34 @@ class ClassMounter(Alconna):
             _options.append(
                 Option(name, _opt_args, help_text=help_text)
             )
-            behavior.options[f"options.{name}.args"] = func
+            self.cb_behavior.options[f"options.{name}.args"] = func
 
         _options.extend(
-            SubClassMounter(cls, behavior, "")
+            SubClassMounter(cls, self.cb_behavior, "")
             for name, cls in inspect.getmembers(mount_cls, inspect.isclass)
             if not name.startswith("_") and not name.endswith("Config")
         )
         super().__init__(
             config.get("command", mount_cls.__name__),
             main_args,
-            config.get("headers", []),
+            config.get("prefixes", []),
             *_options,
             namespace=config.get("namespace", None),
             meta=CommandMeta(
                 description=config.get("description", main_help_text),
                 raise_exception=config.get("raise_exception", True),
             ),
-            behaviors=[behavior],
+            behaviors=[self.cb_behavior],
         )
 
+    def get_result(self, func: Callable):
+        return self.cb_behavior.results.get(func.__qualname__)
 
-class ObjectMounter(Alconna):
-    def __init__(self, obj: object, config: Optional[dict] = None):
+class ObjectMounter(Alconna[TDC], Generic[T, TDC]):
+    mount_cls: Type[T]
+    instance: T
+
+    def __init__(self, obj: T, config: Optional[dict] = None):
         self.mount_cls = type(obj)
         self.instance = obj
         config = config or visit_config(obj)
@@ -763,7 +795,7 @@ class ObjectMounter(Alconna):
             for k, v in kwargs.items():
                 setattr(self.instance, k, v)
 
-        behavior = CallbackHandler(main_call=_main_func)
+        self.cb_behavior = CallbackHandler(main_call=_main_func)
 
         for name, func in filter(lambda x: not x[0].startswith("_"), members):
             help_text = func.__doc__ or name
@@ -773,10 +805,10 @@ class ObjectMounter(Alconna):
                     name, args=_opt_args, help_text=help_text
                 )
             )
-            behavior.options[f"options.{name}.args"] = func
+            self.cb_behavior.options[f"options.{name}.args"] = func
 
         _options.extend(
-            SubClassMounter(cls, behavior, "")
+            SubClassMounter(cls, self.cb_behavior, "")
             for name, cls in inspect.getmembers(obj, inspect.isclass)
             if not name.startswith("_")
         )
@@ -788,20 +820,46 @@ class ObjectMounter(Alconna):
         super().__init__(
             config.get("command", obj_name),
             main_args,
-            config.get("headers", []),
+            config.get("prefixes", []),
             *_options,
             meta=CommandMeta(
                 description=config.get("description", main_help_text),
                 raise_exception=config.get("raise_exception", True),
             ),
-            behaviors=[behavior],
+            behaviors=[self.cb_behavior],
             namespace=config.get("namespace", None),
         )
 
+    def get_result(self, func: Callable):
+        return self.cb_behavior.results.get(func.__qualname__)
+
+@overload
+def _from_object(
+    *, command: Optional[TDC] = None, config: Optional[MountConfig] = None,
+) -> ModuleMounter:
+    ...
+
+@overload
+def _from_object(
+    target: Type[T], command: Optional[TDC] = None, config: Optional[MountConfig] = None,
+) -> ClassMounter[T, TDC]:
+    ...
+
+@overload
+def _from_object(
+    target: T, command: Optional[TDC] = None, config: Optional[MountConfig] = None,
+) -> ObjectMounter[T, TDC]:
+    ...
+
+@overload
+def _from_object(
+    target: Callable[..., T], command: Optional[TDC] = None, config: Optional[MountConfig] = None,
+) -> FuncMounter[T, TDC]:
+    ...
 
 def _from_object(
-    target: Optional[Union[Type, object, FunctionType, MethodType, ModuleType]] = None,
-    command: Optional[str] = None,
+    target: Optional[Union[Type[T], T, Callable[..., T], ModuleType]] = None,
+    command: Optional[TDC] = None,
     config: Optional[MountConfig] = None,
 ):
     """

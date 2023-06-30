@@ -64,7 +64,8 @@ def test_fire_like_class():
 
         def talk(self, name="world"):
             """Test Function"""
-            print(f"Hello {name} from {self.sender}")
+            print(res := f"Hello {name} from {self.sender}")
+            return res
 
         class MySub:
             def __init__(self, name):
@@ -80,6 +81,7 @@ def test_fire_like_class():
     print('')
     con2 = AlconnaFire(MyClass)
     assert con2.parse("con2 Alc talk hhh").matched is True
+    assert con2.get_result(MyClass.talk) == "Hello hhh from Alc"
     assert con2.parse("con2 talk Friend MySub abc output").query("talk.name") == "Friend"
     print('')
     print(con2.get_help())
@@ -119,9 +121,13 @@ def test_fire_like_func():
             description = "测试"
 
         print(f"Hello {name}!")
+        return name
 
     con4 = AlconnaFire(my_function)
-    assert con4.parse("con4 Friend").matched is True
+    arp, res = con4.exec("con4 Friend")
+    assert arp.matched
+    assert res == "Friend"
+
 
 
 def test_delegate():
