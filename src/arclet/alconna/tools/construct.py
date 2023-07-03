@@ -335,7 +335,7 @@ def args_from_list(args: List[List[str]], custom_types: Dict[str, type]) -> Args
         _args.add(name, value=value, default=default)
     return _args
 
-def _args_from_string(string: str, formats: Dict[str, Union[TAValue, Args, Arg]], args: Args):
+def args_from_string(string: str, formats: Dict[str, Union[TAValue, Args, Arg]], args: Args):
     if mat := re.match(r"^\{(?P<pattern>.+?)\}$", string):
         pat = mat["pattern"]
         if pat in formats:
@@ -391,14 +391,14 @@ def _from_format(
             _stack.append(string)
             continue
         if not _finish_arg:
-            _args_from_string(string, formats, main_args)
+            args_from_string(string, formats, main_args)
         elif not _stack:
             raise ValueError(lang.require("tools", "construct.format_error".format(target=string)))
         else:
             singles = _stack[:-1]
             name = _stack[-1]
             _opt_args = Args()
-            _args_from_string(string, formats, _opt_args)
+            args_from_string(string, formats, _opt_args)
             options.extend(Option(single) for single in singles)
             options.append(Option(name, _opt_args))
     alc = Alconna(command, main_args, *options, meta=meta)
@@ -505,7 +505,6 @@ class MountConfig(TypedDict):
     prefixes: NotRequired[List[str]]
     raise_exception: NotRequired[bool]
     description: NotRequired[str]
-    # get_subcommand: NotRequired[bool]
     namespace: NotRequired[str]
     command: NotRequired[str]
 
@@ -847,14 +846,14 @@ def _from_object(
 
 @overload
 def _from_object(
-    target: T, command: Optional[TDC] = None, config: Optional[MountConfig] = None,
-) -> ObjectMounter[T, TDC]:
+    target: Union[Callable[..., T], FunctionType], command: Optional[TDC] = None, config: Optional[MountConfig] = None,
+) -> FuncMounter[T, TDC]:
     ...
 
 @overload
 def _from_object(
-    target: Callable[..., T], command: Optional[TDC] = None, config: Optional[MountConfig] = None,
-) -> FuncMounter[T, TDC]:
+    target: T, command: Optional[TDC] = None, config: Optional[MountConfig] = None,
+) -> ObjectMounter[T, TDC]:
     ...
 
 def _from_object(
@@ -942,13 +941,3 @@ def _argument(
 AlconnaFormat = _from_format
 AlconnaFire = _from_object
 Argument = _argument
-
-__all__ = [
-    "AlconnaFormat",
-    "AlconnaString",
-    "AlconnaFire",
-    "Argument",
-    "AlconnaDecorate",
-    "delegate",
-    "Executor",
-]
