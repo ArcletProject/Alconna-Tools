@@ -469,7 +469,7 @@ class AlconnaString:
         aliases = []
         index = 0
         for part in parts:
-            if not part.startswith("-"):
+            if part.startswith("<") or part.startswith("["):
                 break
             aliases.append(part)
             index += 1
@@ -620,8 +620,6 @@ class SubClassMounter(Subcommand):
 
 
 class FuncMounter(Alconna[TDC], Generic[T, TDC]):
-    target: Callable[..., T]
-
     def __init__(
         self, func: Callable[..., T], config: Optional[MountConfig] = None
     ):
@@ -643,20 +641,11 @@ class FuncMounter(Alconna[TDC], Generic[T, TDC]):
             ),
             namespace=config.get("namespace", None),
         )
-        self.target = func
         self.bind()(func)
 
-    def exec(self, message: TDC) -> Tuple[Arparma[TDC], Optional[T]]:
-        try:
-            arp = self._parse(message)
-        except NullMessage as e:
-            if self.meta.raise_exception:
-                raise e
-            return Arparma(self.path, message, False, error_info=e), None
-        if arp.matched:
-            arp = arp.execute(self.behaviors)
-            return arp, arp.call(self.target)
-        return arp, None
+    @property
+    def exec_result(self) -> dict[str, T]:
+        return {ext.target.__name__: res for ext, res in self._executors.items() if res is not None}
 
 class ModuleMounter(Alconna):
     def __init__(self, module: ModuleType, config: Optional[MountConfig] = None):
