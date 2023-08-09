@@ -14,7 +14,6 @@ from typing import (
     List,
     Optional,
     Type,
-    Tuple,
     TypeVar,
     Union,
     cast,
@@ -352,10 +351,11 @@ def args_from_string(string: str, formats: Dict[str, Union[TAValue, Args, Arg]],
     else:
         args.__merge__([string, RawStr(string)])
 
-def _from_format(
+def alconna_from_format(
     format_string: str,
     format_args: Optional[Dict[str, Union[TAValue, Args, Arg]]] = None,
     meta: Optional[CommandMeta] = None,
+    union: bool = True,
 ) -> "Alconna":
     """
     以格式化字符串的方式构造 Alconna
@@ -379,9 +379,13 @@ def _from_format(
     """
     formats = format_args or {}
     _key_ref = 0
-    strings = split(format_string, (" ",))
+    strings = split(format_string.replace("{", "\"{").replace("}", "}\""), (" ",))
     command = strings.pop(0)
-    options = []
+    data = []
+    if mat := re.match(r"^\[(.+?)]$", command):
+        data.append([i.strip() for i in mat["data"].split("|")])
+    else:
+        data.append(command)
     main_args = Args()
     _finish_arg = False
     _stack = []
@@ -399,12 +403,13 @@ def _from_format(
             name = _stack[-1]
             _opt_args = Args()
             args_from_string(string, formats, _opt_args)
-            options.extend(Option(single) for single in singles)
-            options.append(Option(name, _opt_args))
-    alc = Alconna(command, main_args, *options, meta=meta)
-    for ana, __ in command_manager.requires(alc.path):
-        if ana.command != alc:
-            alc = alc | ana.command
+            data.extend(Option(single) for single in singles)
+            data.append(Option(name, _opt_args))
+    alc = Alconna(main_args, *data, meta=meta)
+    if union:
+        for ana, __ in command_manager.requires(alc.path):
+            if ana.command != alc:
+                alc = alc | ana.command
     return alc
 
 class AlconnaString:
@@ -422,13 +427,35 @@ class AlconnaString:
         >>> alc.parse("test abcd --foo True")
     """
     @staticmethod
-    def args_gen(_others: str):
-        arg = [re.split("[:=]", p) for p in re.findall(r"<(.+?)>", _others)]
-        for p in re.findall(r"\[(.+?)]", _others):
-            res = re.split("[:=]", p)
-            res[0] = f"{res[0]};?"
-            arg.append(res)
-        return arg
+    def args_gen(pattern: str, types: dict):
+        args = Args()
+        temp = []
+        quote = False
+        for char in pattern:
+            if char == " " and not quote:
+                if temp:
+                    args.__merge__([temp[0], RawStr(temp[0])])
+                    temp.clear()
+                continue
+            if char in {"<", "["}:  # start
+                quote = True
+                temp.append("")
+            elif char == ">":
+                args.__merge__(args_from_list([temp], types.copy()))
+                temp.clear()
+                quote = False
+            elif char == "]":
+                temp[0] = f"{temp[0]};?"
+                args.__merge__(args_from_list([temp], types.copy()))
+                temp.clear()
+                quote = False
+            elif char in {":", "="}:
+                temp.append("")
+            elif not temp:
+                temp.append(char)
+            else:
+                temp[-1] += char
+        return args
 
     def __init__(self, command: str, help_text: Optional[str] = None):
         """创建 AlconnaString
@@ -445,11 +472,11 @@ class AlconnaString:
             self.buffer["prefixes"] = mat[1].split("|")
         else:
             self.buffer["command"] = head.lstrip()
-        args = self.args_gen(others)
         if help_string := re.findall(r"(?: )#(.+)$", others):  # noqa
             self.meta.description = help_string[0]
+            others = others[: -len(help_string[0]) - 1].rstrip()
         custom_types = getattr(inspect.getmodule(inspect.stack()[1][0]), "__dict__", {})
-        self.buffer["main_args"] = args_from_list(args, custom_types.copy())
+        self.buffer["main_args"] = self.args_gen(others, custom_types.copy())
 
     def option(self, name: str, opt: Optional[str] = None, default: Any = None, action: Optional[Action] = None):
         """添加一个选项
@@ -465,6 +492,10 @@ class AlconnaString:
                 Option(name, default=default, action=action)
             )
             return self
+        help_text = None
+        if help_string := re.findall(r"(?: )#(.+)$", opt):  # noqa
+            help_text = help_string[0]
+            opt = opt[: -len(help_string[0]) - 1].rstrip()
         parts = split(opt, (" ",))
         aliases = []
         index = 0
@@ -476,10 +507,7 @@ class AlconnaString:
         _args = Args()
         if parts[index:]:
             custom_types = getattr(inspect.getmodule(inspect.stack()[1][0]), "__dict__", {})
-            _args = args_from_list(self.args_gen(" ".join(parts[index:])), custom_types.copy())
-        help_text = None
-        if help_string := re.findall(r"(?: )#(.+)$", opt):  # noqa
-            help_text = help_string[0]
+            _args = self.args_gen(" ".join(parts[index:]), custom_types.copy())
         if aliases:
             opt = Option("|".join(aliases), _args, dest=name, default=default, action=action, help_text=help_text)
         else:
@@ -644,7 +672,7 @@ class FuncMounter(Alconna[TDC], Generic[T, TDC]):
         self.bind()(func)
 
     @property
-    def exec_result(self) -> dict[str, T]:
+    def exec_result(self) -> Dict[str, T]:
         return {ext.target.__name__: res for ext, res in self._executors.items() if res is not None}
 
 class ModuleMounter(Alconna):
@@ -822,30 +850,30 @@ class ObjectMounter(Alconna[TDC], Generic[T, TDC]):
         return self.cb_behavior.results.get(func.__qualname__)
 
 @overload
-def _from_object(
+def alconna_from_object(
     *, command: Optional[TDC] = None, config: Optional[MountConfig] = None,
 ) -> ModuleMounter:
     ...
 
 @overload
-def _from_object(
+def alconna_from_object(
     target: Type[T], command: Optional[TDC] = None, config: Optional[MountConfig] = None,
 ) -> ClassMounter[T, TDC]:
     ...
 
 @overload
-def _from_object(
+def alconna_from_object(
     target: Union[Callable[..., T], FunctionType], command: Optional[TDC] = None, config: Optional[MountConfig] = None,
 ) -> FuncMounter[T, TDC]:
     ...
 
 @overload
-def _from_object(
+def alconna_from_object(
     target: T, command: Optional[TDC] = None, config: Optional[MountConfig] = None,
 ) -> ObjectMounter[T, TDC]:
     ...
 
-def _from_object(
+def alconna_from_object(
     target: Optional[Union[Type[T], T, Callable[..., T], ModuleType]] = None,
     command: Optional[TDC] = None,
     config: Optional[MountConfig] = None,
@@ -927,6 +955,6 @@ def _argument(
     return opt
 
 
-AlconnaFormat = _from_format
-AlconnaFire = _from_object
+AlconnaFormat = alconna_from_format
+AlconnaFire = alconna_from_object
 Argument = _argument

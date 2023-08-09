@@ -124,9 +124,9 @@ def test_fire_like_func():
         return name
 
     con4 = AlconnaFire(my_function)
-    arp, res = con4.exec("con4 Friend")
+    arp = con4.parse("con4 Friend")
     assert arp.matched
-    assert res == "Friend"
+    assert con4.exec_result[my_function.__name__] == "Friend"
 
 
 
