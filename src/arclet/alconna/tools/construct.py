@@ -26,9 +26,10 @@ from arclet.alconna.args import ArgFlag, Args, TAValue, Arg
 from arclet.alconna.action import Action
 from arclet.alconna.arparma import Arparma, ArparmaBehavior
 from arclet.alconna.base import Option, Subcommand
+from arclet.alconna.model import OptionResult
 from arclet.alconna.core import Alconna
 from arclet.alconna.exceptions import NullMessage
-from arclet.alconna.manager import command_manager
+from arclet.alconna.manager import command_manager, ShortcutArgs
 from arclet.alconna.typing import TDC, KeyWordVar, MultiVar, CommandMeta
 from nepattern import AllParam, AnyOne, all_patterns, type_parser, RawStr
 from tarina import split, split_once, init_spec, lang
@@ -419,7 +420,7 @@ class AlconnaString:
 
         >>> alc = (
         ...     AlconnaString("test <message:str:hello> #HELP_STRING")
-        ...     .option("foo", "--foo -f <val:bool>")
+        ...     .option("foo", "-f <val:bool>")
         ...     .option("bar", "-bar <bar:str> [baz:int]")
         ...     .option("qux", default=123)
         ...     .build()
@@ -466,6 +467,8 @@ class AlconnaString:
         """
         self.buffer = {}
         self.options = []
+        self.shortcuts = {}
+        self.actions = []
         self.meta = CommandMeta(description=help_text, fuzzy_match=True)
         head, others = split_once(command, (" ",))
         if mat := re.match(r"^\[(.+?)]$", head):
@@ -478,6 +481,13 @@ class AlconnaString:
         custom_types = getattr(inspect.getmodule(inspect.stack()[1][0]), "__dict__", {})
         self.buffer["main_args"] = self.args_gen(others, custom_types.copy())
 
+    def alias(self, alias: str):
+        if "prefixes" in self.buffer and "command" not in self.buffer:
+            self.buffer["prefixes"].append(alias)
+        else:
+            self.buffer.setdefault("aliases", []).append(alias)
+        return self
+
     def option(self, name: str, opt: Optional[str] = None, default: Any = None, action: Optional[Action] = None):
         """添加一个选项
 
@@ -487,9 +497,12 @@ class AlconnaString:
             default (Any, optional): 选项的默认值.
             action (Optional[Action], optional): 选项的动作.
         """
+        _default = default
+        if isinstance(default, dict):
+            _default = OptionResult(args=default)
         if opt is None:
             self.options.append(
-                Option(name, default=default, action=action)
+                Option(name, default=_default, action=action)
             )
             return self
         help_text = None
@@ -497,7 +510,7 @@ class AlconnaString:
             help_text = help_string[0]
             opt = opt[: -len(help_string[0]) - 1].rstrip()
         parts = split(opt, (" ",))
-        aliases = []
+        aliases = [f"--{name}"]
         index = 0
         for part in parts:
             if part.startswith("<") or part.startswith("["):
@@ -508,10 +521,7 @@ class AlconnaString:
         if parts[index:]:
             custom_types = getattr(inspect.getmodule(inspect.stack()[1][0]), "__dict__", {})
             _args = self.args_gen(" ".join(parts[index:]), custom_types.copy())
-        if aliases:
-            opt = Option("|".join(aliases), _args, dest=name, default=default, action=action, help_text=help_text)
-        else:
-            opt = Option(name, _args, default=default, action=action, help_text=help_text)
+        opt = Option("|".join(aliases), _args, dest=name, default=_default, action=action, help_text=help_text)
         self.options.append(opt)
         return self
 
@@ -525,9 +535,27 @@ class AlconnaString:
         self.meta.example = content
         return self
 
+    def shortcut(self, key: str, args: Optional[ShortcutArgs] = None):
+        """设置命令的快捷方式"""
+        self.shortcuts[key] = args
+        return self
+
+    def action(self, func: Callable):
+        """设置命令的动作"""
+        self.actions.append(func)
+        return self
+
     def build(self):
         """构造为 Alconna 对象"""
-        return Alconna(*self.buffer.values(), *self.options, meta=self.meta)
+        if "aliases" in self.buffer:
+            self.buffer["command"] = f"re:({self.buffer['command']}|" + "|".join(self.buffer["aliases"]) + ")"
+            self.buffer.pop("aliases")
+        alc = Alconna(*self.buffer.values(), *self.options, meta=self.meta)
+        for key, args in self.shortcuts.items():
+            alc.shortcut(key, args)
+        for action in self.actions:
+            alc.bind()(action)
+        return alc
 
 class MountConfig(TypedDict):
     prefixes: NotRequired[List[str]]

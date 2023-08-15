@@ -19,7 +19,7 @@ def test_koishi_like():
     con = AlconnaString("con <url:url>").build()
     assert con.parse("con https://www.example.com").matched is True
     con_1 = AlconnaString("con_1")\
-        .option("foo", "--foo <foo:str=123> [bar:bool]")\
+        .option("foo", "-f <foo:str=123> [bar:bool]")\
         .option("--bar", default=True)\
         .usage("test USAGE")\
         .build()
@@ -31,10 +31,13 @@ def test_koishi_like():
     assert con_2.parse("con_2 112 334").matched is False
     con_3 = AlconnaString("test")\
         .option("writer", "-w <id:int>")\
-        .option("writer", "--anonymous", default=0)\
+        .option("writer", "--anonymous", default={"id": 0})\
+        .alias("book")\
+        .usage("测试")\
+        .action(lambda id: print(id))\
         .build()
     assert con_3.parse("test -w 123").query("writer.id") == 123
-    assert con_3.parse("test --anonymous").query("writer.value") == 0
+    assert con_3.parse("book --anonymous").query("writer.id") == 0
 
 
 def test_format_like():
