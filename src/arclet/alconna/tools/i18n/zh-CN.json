@@ -13,6 +13,8 @@
     "format.ap.example": "样例",
     "format.ap.opt": "选项",
     "format.ap.sub": "子命令",
-    "format.md.title": "指令"
+    "format.md.title": "指令",
+    "pattern.supplier_params_error": "参数数量不匹配",
+    "pattern.flag_error": "不明选项: {target}"
   }
 }

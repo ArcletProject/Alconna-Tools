@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import re
 import sys
+import typing
 from contextlib import suppress
 from dataclasses import dataclass, field
 from functools import partial, wraps
@@ -157,7 +158,7 @@ class AlconnaDecorate:
         self,
         name: Optional[str] = None,
         headers: Optional[List[Any]] = None,
-    ) -> Callable[[Callable[..., T]], Executor]:
+    ) -> Callable[[Callable[..., T]], Executor[T]]:
         """
         开始构建命令
 
@@ -177,7 +178,7 @@ class AlconnaDecorate:
                 namespace=self.namespace,
             )
             if alc.meta.example and "$" in alc.meta.example:
-                alc.meta.example = alc.meta.example.replace("$", alc.headers[0] if alc.headers else "")
+                alc.meta.example = alc.meta.example.replace("$", str(alc.prefixes[0]) if alc.prefixes else "")
             self.building = False
             return Executor(alc, func).set_parser(self.default_parser)
 
@@ -238,7 +239,7 @@ class AlconnaDecorate:
             raise RuntimeError(lang.require("tools", "construct.decorate_error"))
 
         def wrapper(func: TCallable) -> TCallable:
-            if args := self.buffer.get("args"):
+            if args := self.buffer.get("args"):  # type: ignore
                 args: Args
                 args.__merge__(arg)
             else:
@@ -321,6 +322,8 @@ def args_from_list(args: List[List[str]], custom_types: Dict[str, type]) -> Args
                 _kw = len(mat["multi"]) > 1
                 _slice = int(mat["slice"] or -1)
             with suppress(NameError, ValueError, TypeError):
+                _types = custom_types.copy()
+                _types.update(typing.__dict__)
                 value = all_patterns().get(value, None) or type_parser(eval(value, custom_types))  # type: ignore
                 default = (
                     (get_origin(value.origin) or value.origin)(default)
@@ -339,10 +342,11 @@ def args_from_string(string: str, formats: Dict[str, Union[TAValue, Args, Arg]],
     if mat := re.match(r"^\{(?P<pattern>.+?)\}$", string):
         pat = mat["pattern"]
         if pat in formats:
-            if isinstance(formats[pat], (Args, Arg)):
-                args.__merge__(formats[pat])
+            value = formats[pat]
+            if isinstance(value, (Args, Arg)):
+                args.__merge__(value)
             else:
-                args.__merge__([pat, formats[pat]])
+                args.__merge__([pat, value])
         else:
             part = re.split("[:=]", pat)
             if len(part) == 1:
@@ -469,7 +473,7 @@ class AlconnaString:
         self.options = []
         self.shortcuts = {}
         self.actions = []
-        self.meta = CommandMeta(description=help_text, fuzzy_match=True)
+        self.meta = CommandMeta(description=help_text or command, fuzzy_match=True)
         head, others = split_once(command, (" ",))
         if mat := re.match(r"^\[(.+?)]$", head):
             self.buffer["prefixes"] = mat[1].split("|")
@@ -521,8 +525,8 @@ class AlconnaString:
         if parts[index:]:
             custom_types = getattr(inspect.getmodule(inspect.stack()[1][0]), "__dict__", {})
             _args = self.args_gen(" ".join(parts[index:]), custom_types.copy())
-        opt = Option("|".join(aliases), _args, dest=name, default=_default, action=action, help_text=help_text)
-        self.options.append(opt)
+        _opt = Option("|".join(aliases), _args, dest=name, default=_default, action=action, help_text=help_text)
+        self.options.append(_opt)
         return self
 
     def usage(self, content: str):
@@ -592,7 +596,7 @@ def visit_config(obj: Any, base: Optional[MountConfig] = None) -> MountConfig:
         obj, lambda x: inspect.isclass(x) and x.__name__.endswith("Config")
     ):
         ks = kss[0][1]
-        result.update({k: getattr(ks, k) for k in config_keys if k in dir(ks)})
+        result.update({k: getattr(ks, k) for k in config_keys if k in dir(ks)})  # type: ignore
     return result
 
 
@@ -628,7 +632,6 @@ class SubClassMounter(Subcommand):
 
     def __init__(self, mount_cls: Type, upper_handler: CallbackHandler, upper_path: str):
         self.mount_cls = mount_cls
-        self.instance: mount_cls = None
         config = visit_config(mount_cls)
         members = inspect.getmembers(
             mount_cls, lambda x: inspect.isfunction(x) or inspect.ismethod(x)
@@ -642,13 +645,14 @@ class SubClassMounter(Subcommand):
         main_args = Args.from_callable(mount_cls.__init__)[0]
 
         def _main_func(**kwargs):
-            if self.instance is None:
-                self.instance = mount_cls(**kwargs)
-                for key, value in kwargs.items():
-                    self.args[key].field.default = value
-            else:
+            if hasattr(self, "instance"):
                 for k, v in kwargs.items():
                     setattr(self.instance, k, v)
+            else:
+                self.instance = mount_cls(**kwargs)
+                for key, value in kwargs.items():
+                    self.args[key].field.default = value  # type: ignore
+
         path = f"subcommands.{upper_path}.{mount_cls.__name__}" if upper_path else f"subcommands.{mount_cls.__name__}"
         upper_handler.options[f"{path}.args"] = _main_func
         for name, func in filter(lambda x: not x[0].startswith("_"), members):
@@ -765,7 +769,6 @@ class ClassMounter(Alconna[TDC], Generic[T, TDC]):
 
     def __init__(self, mount_cls: Type[T], config: Optional[MountConfig] = None):
         self.mount_cls = mount_cls
-        self.instance: mount_cls = None
         config = config or visit_config(mount_cls, config)
         members = inspect.getmembers(
             mount_cls, lambda x: inspect.isfunction(x) or inspect.ismethod(x)
@@ -779,14 +782,13 @@ class ClassMounter(Alconna[TDC], Generic[T, TDC]):
         main_args = Args.from_callable(mount_cls.__init__)[0]
 
         def _main_func(**kwargs):
-            if self.instance is None:
-                self.instance = mount_cls(**kwargs)
-                for key, value in kwargs.items():
-                    self.args[key].field.default = value
-            else:
+            if hasattr(self, "instance"):
                 for k, v in kwargs.items():
                     setattr(self.instance, k, v)
-
+            else:
+                self.instance = mount_cls(**kwargs)
+                for key, value in kwargs.items():
+                    self.args[key].field.default = value  # type: ignore
 
         self.cb_behavior = CallbackHandler(main_call=_main_func)
         for name, func in filter(lambda x: not x[0].startswith("_"), members):
@@ -824,7 +826,7 @@ class ObjectMounter(Alconna[TDC], Generic[T, TDC]):
     mount_cls: Type[T]
     instance: T
 
-    def __init__(self, obj: T, config: Optional[dict] = None):
+    def __init__(self, obj: T, config: Optional[MountConfig] = None):
         self.mount_cls = type(obj)
         self.instance = obj
         config = config or visit_config(obj)
@@ -879,7 +881,7 @@ class ObjectMounter(Alconna[TDC], Generic[T, TDC]):
 
 @overload
 def alconna_from_object(
-    *, command: Optional[TDC] = None, config: Optional[MountConfig] = None,
+    target: ModuleType, command: Optional[TDC] = None, config: Optional[MountConfig] = None,
 ) -> ModuleMounter:
     ...
 
@@ -905,7 +907,12 @@ def alconna_from_object(
     target: Optional[Union[Type[T], T, Callable[..., T], ModuleType]] = None,
     command: Optional[TDC] = None,
     config: Optional[MountConfig] = None,
-):
+) -> Union[
+    ModuleMounter,
+    ClassMounter[T, TDC],
+    FuncMounter[T, TDC],
+    ObjectMounter[T, TDC],
+]:
     """
     通过解析传入的对象，生成 Alconna 实例的方法, 或者说是Fire-like的方式
 
@@ -929,12 +936,12 @@ def alconna_from_object(
         r = ModuleMounter(
             inspect.getmodule(inspect.stack()[1][0]) or sys.modules["__main__"], config
         )
-    command = command or (" ".join(sys.argv[1:]) if len(sys.argv) > 1 else None)
+    command = command or (" ".join(sys.argv[1:]) if len(sys.argv) > 1 else None)  # type: ignore
     if command:
         with suppress(Exception):
             r.parse(command)
         command_manager.require(r).reset()
-    return r
+    return r  # type: ignore
 
 
 def delegate(cls: Type) -> Alconna:
@@ -973,7 +980,7 @@ def _argument(
     opt = Option(
         name, alias=list(alias), dest=dest, help_text=description, action=action
     )
-    opt.args.add_argument(
+    opt.args.add(
         name.strip("-"),
         value=value,
         default=default,

@@ -13,6 +13,8 @@
     "format.ap.example": "Example",
     "format.ap.opt": "Options",
     "format.ap.sub": "Commands",
-    "format.md.title": "Command"
+    "format.md.title": "Command",
+    "pattern.supplier_params_error": "Supplier must have 0 or 1 parameter",
+    "pattern.flag_error": "Unknown Flag: {target}"
   }
 }

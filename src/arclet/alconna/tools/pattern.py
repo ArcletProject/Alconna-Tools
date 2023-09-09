@@ -2,7 +2,7 @@ import inspect
 import re
 from typing import Any, Callable, Literal, Tuple, Type, TypeVar, Union
 
-from arclet.alconna import Args, config
+from arclet.alconna import Args
 from nepattern import (
     BasePattern,
     Empty,
@@ -17,7 +17,7 @@ from .debug import analyse_args
 TOrigin = TypeVar("TOrigin")
 
 
-class ObjectPattern(BasePattern):
+class ObjectPattern(BasePattern[TOrigin]):
     def __init__(
         self,
         origin: Type[TOrigin],
@@ -62,11 +62,7 @@ class ObjectPattern(BasePattern):
                 ):
                     default = suppliers[name]()
                 else:
-                    raise TypeError(
-                        config.lang.types_supplier_params_error.format(
-                            target=name, origin=origin.__name__
-                        )
-                    )
+                    raise TypeError(lang.require("tools", "pattern.supplier_params_error"))
             self._names.append(name)
             self._args.add(name, value=anno, default=default)
         self.flag = flag
@@ -89,7 +85,7 @@ class ObjectPattern(BasePattern):
                 + "}"
             )
         else:
-            raise TypeError(config.lang.types_type_error.format(target=flag))
+            raise TypeError(lang.require("tools", "pattern.flag_error").format(target=flag))
         super().__init__(
             model=PatternModel.TYPE_CONVERT, origin=origin, alias=origin.__name__
         )

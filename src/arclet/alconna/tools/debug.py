@@ -23,7 +23,7 @@ class _DummyAnalyser(Analyser):
 
     class _DummyALC:
         options = []
-        meta = namedtuple("Meta", ["keep_crlf", "fuzzy_match"])(False, False)
+        meta = namedtuple("Meta", ["keep_crlf", "fuzzy_match", "raise_exception"])(False, False, True)
         namespace_config = config.default_namespace
 
     def __new__(cls, *args, **kwargs):
@@ -75,9 +75,8 @@ def analyse_option(option: Option, command: DataCollection[str | Any], raise_exc
     _analyser.reset()
     _analyser.command.separators = (" ",)
     _analyser.need_main_args = False
-    _analyser.raise_exception = True
     _analyser.command.options.append(option)
-    default_compiler(_analyser, _analyser.command.namespace_config, argv.param_ids)
+    default_compiler(_analyser, argv.param_ids)
     _analyser.command.options.clear()
     try:
         argv.build(command)
@@ -95,9 +94,8 @@ def analyse_subcommand(subcommand: Subcommand, command: DataCollection[str | Any
     _analyser.reset()
     _analyser.command.separators = (" ", )
     _analyser.need_main_args = False
-    _analyser.raise_exception = True
     _analyser.command.options.append(subcommand)
-    default_compiler(_analyser, _analyser.command.namespace_config, argv.param_ids)
+    default_compiler(_analyser, argv.param_ids)
     _analyser.command.options.clear()
     try:
         argv.build(command)
