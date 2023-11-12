@@ -8,7 +8,7 @@
     "construct.func_name_error": "function name can not start with '_'",
     "format.ap.title": "Usage",
     "format.ap.notice": "Content",
-    "format.ap.desc": "Info",
+    "format.ap.base": "Base",
     "format.ap.usage": "Detail",
     "format.ap.example": "Example",
     "format.ap.opt": "Options",

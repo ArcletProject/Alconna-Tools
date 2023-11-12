@@ -8,7 +8,7 @@
     "construct.func_name_error": "函数名不能以 '_' 开头",
     "format.ap.title": "用法",
     "format.ap.notice": "内容",
-    "format.ap.desc": "描述",
+    "format.ap.base": "基础指令",
     "format.ap.usage": "细节",
     "format.ap.example": "样例",
     "format.ap.opt": "选项",
