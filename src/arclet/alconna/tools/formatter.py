@@ -16,8 +16,8 @@ class ShellTextFormatter(TextFormatter):
         sub_names = [i.name for i in filter(lambda x: isinstance(x, Subcommand), parts)]
         opt_names = [min(i.aliases, key=len) for i in filter(lambda x: isinstance(x, Option) and x.name not in self.ignore_names, parts)]
         sub_names = f"{{{','.join(sub_names)}}}" if sub_names else ""
-        opt_names = (" ".join(f"[{i}]" for i in opt_names)) if opt_names else ""
-        topic = f"{lang.require('tools', 'format.ap.title')}: {trace.head['name']} {opt_names}\n {sub_names}"
+        opt_names = (" ".join(f"[{i}]" for i in opt_names) + "\n") if opt_names else ""
+        topic = f"{lang.require('tools', 'format.ap.title')}: {trace.head['name']} {opt_names} {sub_names}"
         title, desc, usage, example = self.header(trace.head, trace.separators)
         param = self.parameters(trace.args)
         body = self.body(parts)
@@ -44,7 +44,7 @@ class ShellTextFormatter(TextFormatter):
             return f"{name.upper()}..."
         arg = f"[{name.upper()}" if parameter.optional else name.upper()
         if parameter.value not in (AnyOne, AnyString):
-            arg += f":{parameter.value}"
+            arg += f"<{parameter.value}>"
         if parameter.field.display is Empty:
             arg += "=None"
         elif parameter.field.display is not None:
@@ -110,9 +110,9 @@ class ShellTextFormatter(TextFormatter):
         subcommand_string = "\n".join(
             f"{i.ljust(max_len)}    {j}" for i, j in zip(subcommands, sub_description)
         )
-        option_help = f"{lang.require('tools', 'format.ap.opt')}:\n" if option_string else ""
-        subcommand_help = f"{lang.require('tools', 'format.ap.sub')}:\n" if subcommand_string else ""
-        return f"{subcommand_help}{subcommand_string}\n{option_help}{option_string}\n"
+        option_help = f"{lang.require('tools', 'format.ap.opt')}:\n{option_string}\n" if option_string else ""
+        subcommand_help = f"{lang.require('tools', 'format.ap.sub')}:\n{subcommand_string}\n" if subcommand_string else ""
+        return f"{subcommand_help}{option_help}"
 
 
 class MarkdownTextFormatter(TextFormatter):
@@ -270,9 +270,9 @@ class _RichTextFormatter(TextFormatter):
         sub_names = [i.name for i in filter(lambda x: isinstance(x, Subcommand), parts)]
         opt_names = [min(i.aliases, key=len) for i in filter(lambda x: isinstance(x, Option) and x.name not in self.ignore_names, parts)]
         sub_names = self._convert(f"{{{','.join(sub_names)}}}", "info") if sub_names else ""
-        opt_names = self._convert((" ".join(f"[{i}]" for i in opt_names)), 'info') if opt_names else ""
+        opt_names = self._convert((" ".join(f"[{i}]" for i in opt_names) + "\n"), 'info') if opt_names else ""
         title = f"{lang.require('tools', 'format.ap.title')}:"
-        topic = f"{self._convert(title, 'warn')} {self._convert(trace.head['name'], 'msg')} {opt_names}\n {sub_names}"
+        topic = f"{self._convert(title, 'warn')} {self._convert(trace.head['name'], 'msg')} {opt_names} {sub_names}"
         cmd, desc, usage, example = self.header(trace.head, trace.separators)
         param = self.parameters(trace.args)
         body = self.body(parts)
@@ -301,7 +301,7 @@ class _RichTextFormatter(TextFormatter):
             return f"{name.upper()}..."
         arg = f"[{name.upper()}" if parameter.optional else name.upper()
         if parameter.value not in (AnyOne, AnyString):
-            arg += f":{parameter.value}"
+            arg += f"<{parameter.value}>"
         if parameter.field.display is Empty:
             arg += "=None"
         elif parameter.field.display is not None:
@@ -379,9 +379,9 @@ class _RichTextFormatter(TextFormatter):
         )
         _opt = f"{lang.require('tools', 'format.ap.opt')}:"
         _sub = f"{lang.require('tools', 'format.ap.sub')}:"
-        option_help = f"{self._convert(_opt, 'warn')}\n" if option_string else ""
-        subcommand_help = f"{self._convert(_sub, 'warn')}\n" if subcommand_string else ""
-        return f"{subcommand_help}{subcommand_string}\n{option_help}{option_string}\n"
+        option_help = f"{self._convert(_opt, 'warn')}\n{option_string}\n" if option_string else ""
+        subcommand_help = f"{self._convert(_sub, 'warn')}\n{subcommand_string}\n" if subcommand_string else ""
+        return f"{subcommand_help}{option_help}"
 
 class RichTextFormatter(_RichTextFormatter):
     """argparser 风格的帮助文本格式化器, 增加 rich 的颜色标记，可用 rich.console 打印"""
