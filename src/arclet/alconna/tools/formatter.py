@@ -21,11 +21,11 @@ class ShellTextFormatter(TextFormatter):
         title, desc, usage, example = self.header(trace.head, trace.separators)
         param = self.parameters(trace.args)
         body = self.body(parts)
-        res = f"{topic}\n\n"
+        res = topic
         if desc:
             res = f"{desc}\n\n{res}"
         if param:
-            res += f"{lang.require('tools', 'format.ap.base')}: {title}{param}"
+            res += f"\n\n{lang.require('tools', 'format.ap.base')}: {title}{param}"
         if usage:
             res += f"\n{usage}"
         if body:
@@ -269,19 +269,20 @@ class _RichTextFormatter(TextFormatter):
         parts = trace.body  # type: ignore
         sub_names = [i.name for i in filter(lambda x: isinstance(x, Subcommand), parts)]
         opt_names = [min(i.aliases, key=len) for i in filter(lambda x: isinstance(x, Option) and x.name not in self.ignore_names, parts)]
-        sub_names = self._convert(f"{{{','.join(sub_names)}}}\n", "info") if sub_names else ""
+        sub_names = self._convert(f"{{{','.join(sub_names)}}}", "info") if sub_names else ""
         opt_names = self._convert((" ".join(f"[{i}]" for i in opt_names)), 'info') if opt_names else ""
         title = f"{lang.require('tools', 'format.ap.title')}:"
         topic = f"{self._convert(title, 'warn')} {self._convert(trace.head['name'], 'msg')} {opt_names}\n {sub_names}"
         cmd, desc, usage, example = self.header(trace.head, trace.separators)
-        param = self._convert(self.parameters(trace.args), "success")
+        param = self.parameters(trace.args)
         body = self.body(parts)
-        res = f"{topic}\n\n"
+        res = topic
         if desc:
             res = f"{desc}\n\n{res}"
         if param:
             _base = lang.require('tools', 'format.ap.base')
-            res += f"{self._convert(_base, 'warn')}: {cmd}{param}"
+            _param = self._convert(param, 'success')
+            res += f"\n\n{self._convert(_base, 'warn')}: {cmd}{param}"
         if usage:
             res += f"\n{usage}"
         if body:
