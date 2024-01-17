@@ -13,8 +13,8 @@ class ShellTextFormatter(TextFormatter):
 
     def format(self, trace: Trace) -> str:
         parts = trace.body  # type: ignore
-        sub_names = [i.name for i in filter(lambda x: isinstance(x, Subcommand), parts)]
-        opt_names = [min(i.aliases, key=len) for i in filter(lambda x: isinstance(x, Option) and x.name not in self.ignore_names, parts)]
+        sub_names = [i.name for i in parts if isinstance(i, Subcommand)]
+        opt_names = [min(i.aliases, key=len) for i in parts if isinstance(i, Option) and i.name not in self.ignore_names]
         sub_names = f"{{{','.join(sub_names)}}}" if sub_names else ""
         opt_names = (" ".join(f"[{i}]" for i in opt_names) + "\n") if opt_names else ""
         topic = f"{lang.require('tools', 'format.ap.title')}: {trace.head['name']} {opt_names} {sub_names}"
@@ -79,9 +79,7 @@ class ShellTextFormatter(TextFormatter):
         options = []
         opt_description = []
         max_len = 1
-        for opt in filter(
-                lambda x: isinstance(x, Option) and not isinstance(x, (Completion, Shortcut)), parts
-        ):
+        for opt in (i for i in parts if isinstance(i, Option) and not isinstance(i, (Completion, Shortcut))):
             alias_text = (
                 (f'{{{" ".join(opt.requires)}}} ' if opt.requires else "")
                 + ", ".join(sorted(opt.aliases, key=len))
@@ -203,7 +201,7 @@ class MarkdownTextFormatter(TextFormatter):
         """对单个子命令的描述"""
         name = " ".join(node.requires) + (" " if node.requires else "") + node.name
         opt_string = "\n".join(
-            [self.opt(opt) for opt in filter(lambda x: isinstance(x, Option), node.options)]
+            [self.opt(opt) for opt in node.options if isinstance(opt, Option)]
         )
         sub_string = "".join(
             [
@@ -231,12 +229,11 @@ class MarkdownTextFormatter(TextFormatter):
         """子节点列表的描述"""
         option_string = "\n".join(
             [
-                self.opt(opt) for opt in filter(lambda x: isinstance(x, Option), parts)
-                if opt.name not in self.ignore_names
+                self.opt(opt) for opt in parts if isinstance(opt, Option) and opt.name not in self.ignore_names
             ]
         )
         subcommand_string = "\n".join(
-            [self.sub(sub) for sub in filter(lambda x: isinstance(x, Subcommand), parts)]
+            [self.sub(sub) for sub in parts if isinstance(sub, Subcommand)]
         )
         option_help = f"## {lang.require('format', 'options')}:\n" if option_string else ""
         subcommand_help = f"## {lang.require('format', 'subcommands')}:\n" if subcommand_string else ""
@@ -263,12 +260,13 @@ class _RichTextFormatter(TextFormatter):
             return content
         if self.csl_code:
             return f"\x1b[{color_theme[style][1]}m{content}\x1b[0m"
-        content = content.replace("[", "\[")
+        content = content.replace("[", r"\[")
         return f"[{color_theme[style][0]}]{content}[/]"
+
     def format(self, trace: Trace) -> str:
         parts = trace.body  # type: ignore
         sub_names = [i.name for i in filter(lambda x: isinstance(x, Subcommand), parts)]
-        opt_names = [min(i.aliases, key=len) for i in filter(lambda x: isinstance(x, Option) and x.name not in self.ignore_names, parts)]
+        opt_names = [min(i.aliases, key=len) for i in parts if isinstance(i, Option) and i.name not in self.ignore_names]
         sub_names = self._convert(f"{{{','.join(sub_names)}}}", "info") if sub_names else ""
         opt_names = self._convert((" ".join(f"[{i}]" for i in opt_names) + "\n"), 'info') if opt_names else ""
         title = f"{lang.require('tools', 'format.ap.title')}:"
@@ -340,9 +338,7 @@ class _RichTextFormatter(TextFormatter):
         options = []
         opt_description = []
         max_len = 1
-        for opt in filter(
-            lambda x: isinstance(x, Option) and not isinstance(x, (Completion, Shortcut)), parts
-        ):
+        for opt in (i for i in parts if isinstance(i, Option) and not isinstance(i, (Completion, Shortcut))):
             alias_text = (
                 (f'{{{" ".join(opt.requires)}}} ' if opt.requires else "")
                 + ", ".join(sorted(opt.aliases, key=len))

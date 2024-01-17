@@ -13,6 +13,7 @@ from typing import (
     Dict,
     Generic,
     List,
+    Mapping,
     Optional,
     Type,
     TypeVar,
@@ -313,7 +314,7 @@ def args_from_list(args: List[List[str]], custom_types: Dict[str, type]) -> Args
         )
         name = name.replace("...", "")
         _multi, _kw, _slice = "", False, -1
-        if value not in (AllParam, AnyOne):
+        if isinstance(value, str):
             if mat := re.match(
                 r"^(?P<name>.+?)(?P<multi>[+*]+)(\[)?(?P<slice>\d*)(])?$", value
             ):
@@ -333,12 +334,12 @@ def args_from_list(args: List[List[str]], custom_types: Dict[str, type]) -> Args
             if _multi:
                 value = MultiVar(
                     KeyWordVar(value) if _kw else value,
-                    _slice if _slice > 1 else _multi,
+                    _slice if _slice > 1 else _multi,  # type: ignore
                 )
-        _args.add(name, value=value, default=default)
+        _args.add(name, value=value, default=default)  # type: ignore
     return _args
 
-def args_from_string(string: str, formats: Dict[str, Union[TAValue, Args, Arg]], args: Args):
+def args_from_string(string: str, formats: Mapping[str, Union[TAValue, Args, Arg]], args: Args):
     if mat := re.match(r"^\{(?P<pattern>.+?)\}$", string):
         pat = mat["pattern"]
         if pat in formats:
@@ -358,7 +359,7 @@ def args_from_string(string: str, formats: Dict[str, Union[TAValue, Args, Arg]],
 
 def alconna_from_format(
     format_string: str,
-    format_args: Optional[Dict[str, Union[TAValue, Args, Arg]]] = None,
+    format_args: Optional[Mapping[str, Union[TAValue, Args, Arg]]] = None,
     meta: Optional[CommandMeta] = None,
     union: bool = True,
 ) -> "Alconna":
@@ -619,6 +620,7 @@ class CallbackHandler(ArparmaBehavior):
 
 
 class SubClassMounter(Subcommand):
+    instance: Any
 
     def _get_instance(self):
         return self.instance
@@ -903,7 +905,7 @@ def alconna_from_object(
 ) -> ObjectMounter[T, TDC]:
     ...
 
-def alconna_from_object(
+def alconna_from_object(  # type: ignore
     target: Optional[Union[Type[T], T, Callable[..., T], ModuleType]] = None,
     command: Optional[TDC] = None,
     config: Optional[MountConfig] = None,
@@ -982,7 +984,7 @@ def _argument(
     )
     opt.args.add(
         name.strip("-"),
-        value=value,
+        value=value,  # type: ignore
         default=default,
         flags=[] if required else [ArgFlag.OPTIONAL],
     )
