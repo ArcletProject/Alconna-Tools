@@ -61,7 +61,7 @@ def test_fire_like_class():
     class MyClass:
         """测试从类中构建对象"""
 
-        def __init__(self, sender: Optional[str]):
+        def __init__(self, sender: Optional[str] = None):
             """Constructor"""
             self.sender = sender
 
@@ -212,7 +212,18 @@ def test_formatter():
         Option("aaa baz|bar|baf"),
         Option("aaa fox"),
         Option("aaa bbb fire"),
-        Subcommand("--qux", Option("aaa"), Option("bbb", Args["ccc#ddd", bool])),
+        Subcommand(
+            "qux",
+            Args["a"],
+            Option("aaa"),
+            Option("bbb", Args["ccc#ddd", bool]["eee#fff", str]),
+            Subcommand(
+                "qux",
+                Args["a"],
+                Option("aaa"),
+                Option("bbb", Args["ccc#ddd", bool]["eee#fff", str]),
+            ),
+        ),
         formatter_type=MarkdownTextFormatter,
         meta=CommandMeta("text1111", "text2222", "text3333")
     )
@@ -223,11 +234,17 @@ def test_formatter():
         Option("aaa baz|bar|baf"),
         Option("aaa fox"),
         Option("aaa bbb fire"),
-        Subcommand("qux", Option("aaa"), Option("bbb", Args["ccc#ddd", bool]), Args["a"]),
+        Subcommand(
+            "qux",
+            Args["a"],
+            Option("aaa"),
+            Option("bbb", Args["ccc#ddd", bool]["eee#fff", str]),
+        ),
         formatter_type=ShellTextFormatter,
         meta=CommandMeta("text1111", "text2222", "text3333")
     )
     alc1.parse("!test2 bbb --help")
+
 
 if __name__ == '__main__':
     import pytest

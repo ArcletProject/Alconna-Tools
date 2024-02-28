@@ -32,9 +32,9 @@ from arclet.alconna.model import OptionResult
 from arclet.alconna.core import Alconna
 from arclet.alconna.exceptions import NullMessage
 from arclet.alconna.manager import command_manager, ShortcutArgs
-from arclet.alconna.typing import TDC, KeyWordVar, MultiVar, CommandMeta
-from nepattern import AllParam, AnyOne, all_patterns, type_parser, RawStr
-from tarina import split, split_once, init_spec, lang
+from arclet.alconna.typing import TDC, KeyWordVar, MultiVar, CommandMeta, AllParam
+from nepattern import ANY, all_patterns, type_parser, RawStr
+from tarina import split, split_once, init_spec, lang, Empty
 from typing_extensions import get_origin, NotRequired
 
 T = TypeVar("T")
@@ -52,7 +52,7 @@ def default_parser(
     local_arg: Dict[str, Any],
     loop: asyncio.AbstractEventLoop,
 ) -> T:
-    return result.call(func, **local_arg)
+    return result.call(func)
 
 
 class Executor(Generic[T]):
@@ -305,12 +305,12 @@ def args_from_list(args: List[List[str]], custom_types: Dict[str, type]) -> Args
     for arg in args:
         if (_le := len(arg)) == 0:
             raise NullMessage
-        default = arg[2].strip(" ") if _le > 2 else None
+        default = arg[2].strip(" ") if _le > 2 else Empty
         name = arg[0].strip(" ")
         value = (
             AllParam
             if name.startswith("...") else
-            (arg[1].strip(" ") if _le > 1 else AnyOne)
+            (arg[1].strip(" ") if _le > 1 else ANY)
         )
         name = name.replace("...", "")
         _multi, _kw, _slice = "", False, -1
@@ -328,7 +328,7 @@ def args_from_list(args: List[List[str]], custom_types: Dict[str, type]) -> Args
                 value = all_patterns().get(value, None) or type_parser(eval(value, custom_types))  # type: ignore
                 default = (
                     (get_origin(value.origin) or value.origin)(default)
-                    if default
+                    if default is not Empty
                     else default
                 )
             if _multi:
@@ -339,8 +339,9 @@ def args_from_list(args: List[List[str]], custom_types: Dict[str, type]) -> Args
         _args.add(name, value=value, default=default)  # type: ignore
     return _args
 
+
 def args_from_string(string: str, formats: Mapping[str, Union[TAValue, Args, Arg]], args: Args):
-    if mat := re.match(r"^\{(?P<pattern>.+?)\}$", string):
+    if mat := re.match(r"^\{(?P<pattern>.+?)}$", string):
         pat = mat["pattern"]
         if pat in formats:
             value = formats[pat]
@@ -351,11 +352,12 @@ def args_from_string(string: str, formats: Mapping[str, Union[TAValue, Args, Arg
         else:
             part = re.split("[:=]", pat)
             if len(part) == 1:
-                args.__merge__([part[0], AnyOne])
+                args.__merge__([part[0], ANY])
             else:
                 args.__merge__(args_from_list([part], {}))
     else:
         args.__merge__([string, RawStr(string)])
+
 
 def alconna_from_format(
     format_string: str,
@@ -413,10 +415,12 @@ def alconna_from_format(
             data.append(Option(name, _opt_args))
     alc = Alconna(main_args, *data, meta=meta)
     if union:
-        for ana, __ in command_manager.requires(alc.path):
-            if ana.command != alc:
-                alc = alc | ana.command
+        with suppress(ValueError):
+            cmd = command_manager.get_command(alc.path)
+            cmd = cmd | alc
+            return cmd
     return alc
+
 
 class AlconnaString:
     """以纯字符串的形式构造Alconna的简易方式, 或者说是koishi-like的方式
@@ -487,10 +491,7 @@ class AlconnaString:
         self.buffer["main_args"] = self.args_gen(others, custom_types.copy())
 
     def alias(self, alias: str):
-        if "prefixes" in self.buffer and "command" not in self.buffer:
-            self.buffer["prefixes"].append(alias)
-        else:
-            self.buffer.setdefault("aliases", []).append(alias)
+        self.shortcut(alias, {"prefix": True})
         return self
 
     def option(self, name: str, opt: Optional[str] = None, default: Any = None, action: Optional[Action] = None):
@@ -542,7 +543,7 @@ class AlconnaString:
 
     def shortcut(self, key: str, args: Optional[ShortcutArgs] = None):
         """设置命令的快捷方式"""
-        self.shortcuts[key] = args
+        self.shortcuts[key] = args or {}
         return self
 
     def action(self, func: Callable):
@@ -562,6 +563,7 @@ class AlconnaString:
             alc.bind()(action)
         return alc
 
+
 class MountConfig(TypedDict):
     prefixes: NotRequired[List[str]]
     raise_exception: NotRequired[bool]
@@ -569,7 +571,9 @@ class MountConfig(TypedDict):
     namespace: NotRequired[str]
     command: NotRequired[str]
 
+
 config_keys = ("prefixes", "raise_exception", "description", "namespace", "command")
+
 
 def visit_config(obj: Any, base: Optional[MountConfig] = None) -> MountConfig:
     result: MountConfig = base or {}
@@ -709,6 +713,7 @@ class FuncMounter(Alconna[TDC], Generic[T, TDC]):
     def exec_result(self) -> Dict[str, T]:
         return {ext.target.__name__: res for ext, res in self._executors.items() if res is not None}
 
+
 class ModuleMounter(Alconna):
     def __init__(self, module: ModuleType, config: Optional[MountConfig] = None):
         self.mount_cls = module.__class__
@@ -824,6 +829,7 @@ class ClassMounter(Alconna[TDC], Generic[T, TDC]):
     def get_result(self, func: Callable):
         return self.cb_behavior.results.get(func.__qualname__)
 
+
 class ObjectMounter(Alconna[TDC], Generic[T, TDC]):
     mount_cls: Type[T]
     instance: T
@@ -881,11 +887,13 @@ class ObjectMounter(Alconna[TDC], Generic[T, TDC]):
     def get_result(self, func: Callable):
         return self.cb_behavior.results.get(func.__qualname__)
 
+
 @overload
 def alconna_from_object(
     target: ModuleType, command: Optional[TDC] = None, config: Optional[MountConfig] = None,
 ) -> ModuleMounter:
     ...
+
 
 @overload
 def alconna_from_object(
@@ -893,17 +901,20 @@ def alconna_from_object(
 ) -> ClassMounter[T, TDC]:
     ...
 
+
 @overload
 def alconna_from_object(
     target: Union[Callable[..., T], FunctionType], command: Optional[TDC] = None, config: Optional[MountConfig] = None,
 ) -> FuncMounter[T, TDC]:
     ...
 
+
 @overload
 def alconna_from_object(
     target: T, command: Optional[TDC] = None, config: Optional[MountConfig] = None,
 ) -> ObjectMounter[T, TDC]:
     ...
+
 
 def alconna_from_object(  # type: ignore
     target: Optional[Union[Type[T], T, Callable[..., T], ModuleType]] = None,

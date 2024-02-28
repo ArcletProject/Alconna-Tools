@@ -1,13 +1,13 @@
 import inspect
 import re
-from typing import Any, Callable, Literal, Tuple, Type, TypeVar, Union
+from typing import Any, Callable, Literal, Tuple, Type, TypeVar
 
 from arclet.alconna import Args
 from nepattern import (
     BasePattern,
     Empty,
+    MatchMode,
     MatchFailed,
-    PatternModel,
     all_patterns,
 )
 from nepattern.context import global_patterns
@@ -17,7 +17,7 @@ from .debug import analyse_args
 TOrigin = TypeVar("TOrigin")
 
 
-class ObjectPattern(BasePattern[TOrigin]):
+class ObjectPattern(BasePattern[TOrigin, Any]):
     def __init__(
         self,
         origin: Type[TOrigin],
@@ -53,9 +53,11 @@ class ObjectPattern(BasePattern[TOrigin]):
                     len(_s_sig.parameters) == 2 and inspect.ismethod(suppliers[name])
                 ):
                     anno = BasePattern(
-                        model=PatternModel.TYPE_CONVERT,
-                        origin=anno,
+                        mode=MatchMode.TYPE_CONVERT,
+                        origin=Any,
                         converter=lambda _, x: suppliers[name](x),
+                        alias=anno.__name__,
+                        accepts=Any,
                     )
                 elif len(_s_sig.parameters) == 0 or (
                     len(_s_sig.parameters) == 1 and inspect.ismethod(suppliers[name])
@@ -87,11 +89,11 @@ class ObjectPattern(BasePattern[TOrigin]):
         else:
             raise TypeError(lang.require("tools", "pattern.flag_error").format(target=flag))
         super().__init__(
-            model=PatternModel.TYPE_CONVERT, origin=origin, alias=origin.__name__
+            mode=MatchMode.TYPE_CONVERT, origin=origin, alias=origin.__name__
         )
         global_patterns().set(self)
 
-    def match(self, input_: Union[str, Any]) -> TOrigin:
+    def match(self, input_: Any) -> TOrigin:
         if isinstance(input_, self.origin):
             return input_  # type: ignore
         elif not isinstance(input_, str):

@@ -1,6 +1,7 @@
 from typing import List, Dict, Any, Union, Tuple, Optional
-from nepattern import Empty, AllParam, AnyOne, AnyString
+from nepattern import Empty, ANY, AnyString
 from tarina import lang
+from arclet.alconna import AllParam
 from arclet.alconna.args import Args, Arg
 from arclet.alconna.base import Subcommand, Option, Shortcut, Completion
 from arclet.alconna.formatter import TextFormatter, Trace
@@ -43,11 +44,9 @@ class ShellTextFormatter(TextFormatter):
         if parameter.value is AllParam:
             return f"{name.upper()}..."
         arg = f"[{name.upper()}" if parameter.optional else name.upper()
-        if parameter.value not in (AnyOne, AnyString):
+        if parameter.value not in (ANY, AnyString):
             arg += f"<{parameter.value}>"
-        if parameter.field.display is Empty:
-            arg += "=None"
-        elif parameter.field.display is not None:
+        if parameter.field.display is not Empty:
             arg += f"={parameter.field.display}"
         return f"{arg}]" if parameter.optional else arg
 
@@ -80,20 +79,17 @@ class ShellTextFormatter(TextFormatter):
         opt_description = []
         max_len = 1
         for opt in (i for i in parts if isinstance(i, Option) and not isinstance(i, (Completion, Shortcut))):
-            alias_text = (
-                (f'{{{" ".join(opt.requires)}}} ' if opt.requires else "")
-                + ", ".join(sorted(opt.aliases, key=len))
-            )
+            name = (f'{{{" ".join(opt.requires)}}} ' if opt.requires else "") + ", ".join(sorted(opt.aliases, key=len))
             options.append(
-                f"  {alias_text}{tuple(opt.separators)[0]}{self.parameters(opt.args)}"
+                f"  {name}{tuple(opt.separators)[0]}{self.parameters(opt.args)}"
             )
             opt_description.append(opt.help_text)
         if options:
             max_len = max(max(map(lambda x: len(x), options)), max_len)
         subcommands = []
         sub_description = []
-        for sub in filter(lambda x: isinstance(x, Subcommand), parts):
-            name = " ".join(sub.requires) + (" " if sub.requires else "") + sub.name
+        for sub in (i for i in parts if isinstance(i, Subcommand)):
+            name = (f'{{{" ".join(sub.requires)}}} ' if sub.requires else "") + ", ".join(sorted(sub.aliases, key=len))
             args = self.parameters(sub.args)
             subcommands.append(
                 f"    {name}{tuple(sub.separators)[0]}{args}"
@@ -141,7 +137,7 @@ class MarkdownTextFormatter(TextFormatter):
         res = (
             f"## {help_string}\n\n"
             f"### {lang.require('tools', 'format.md.title')}: \n\n"
-            f"**{command_string}{params}**{notice_text}"
+            f"**{command_string} {params}**{notice_text}"
         )
         if usage:
             res += f"\n\n{usage}"
@@ -161,11 +157,9 @@ class MarkdownTextFormatter(TextFormatter):
         if parameter.value is AllParam:
             return f"&lt;...{name}&gt;"
         arg = f"&#91;{name}" if parameter.optional else f"&lt;{name}"
-        if parameter.value not in (AnyOne, AnyString):
+        if parameter.value not in (ANY, AnyString):
             arg += f": {parameter.value}"
-        if parameter.field.display is Empty:
-            arg += " = None"
-        elif parameter.field.display is not None:
+        if parameter.field.display is not Empty:
             arg += f" = {parameter.field.display}"
         return f"{arg}&#93;" if parameter.optional else f"{arg}&gt;"
 
@@ -188,7 +182,7 @@ class MarkdownTextFormatter(TextFormatter):
         help_text = "> Unknown" if node.help_text == node.dest else f"> {node.help_text}"
         param, notice = self.parameters(node.args)
         notice_text = (
-            (f"\n>\n> #### {lang.require('format', 'notice')}:\n> " + "\n> ".join(notice)) if notice else ""
+            (f"\n>\n> #### {lang.require('format', 'notice')}:\n> " + "\n>\n> ".join(notice)) if notice else ""
         )
         return (
             f"- **{alias_text + (tuple(node.separators)[0] if param else '')}"
@@ -199,15 +193,12 @@ class MarkdownTextFormatter(TextFormatter):
 
     def sub(self, node: Subcommand) -> str:
         """对单个子命令的描述"""
-        name = " ".join(node.requires) + (" " if node.requires else "") + node.name
+        name = " ".join(node.requires) + (" " if node.requires else "") + "│".join(node.aliases)
         opt_string = "\n".join(
             [self.opt(opt) for opt in node.options if isinstance(opt, Option)]
         )
         sub_string = "".join(
-            [
-                self.opt(sub) # type: ignore
-                for sub in filter(lambda x: isinstance(x, Subcommand), node.options)
-            ]
+            [self.opt(sub) for sub in node.options if isinstance(sub, Subcommand)]  # type: ignore
         )
         opt_help = f"### {lang.require('format', 'subcommands.opts')}:\n" if opt_string else ""
         sub_help = f"### {lang.require('format', 'subcommands.subs')}:\n" if sub_string else ""
@@ -249,7 +240,6 @@ color_theme = {
     "success": ("green", "32"),
     "req": ("bold green", "1;32")
 }
-
 
 
 class _RichTextFormatter(TextFormatter):
@@ -298,11 +288,9 @@ class _RichTextFormatter(TextFormatter):
         if parameter.value is AllParam:
             return f"{name.upper()}..."
         arg = f"[{name.upper()}" if parameter.optional else name.upper()
-        if parameter.value not in (AnyOne, AnyString):
+        if parameter.value not in (ANY, AnyString):
             arg += f"<{parameter.value}>"
-        if parameter.field.display is Empty:
-            arg += "=None"
-        elif parameter.field.display is not None:
+        if parameter.field.display is not Empty:
             arg += f"={parameter.field.display}"
         return f"{arg}]" if parameter.optional else arg
 
@@ -321,7 +309,6 @@ class _RichTextFormatter(TextFormatter):
         return f"{res}\n{_not}\n  - " + \
             "\n  - ".join(self._convert(f"{v[0]}: {v[1]}", "success") for v in notice) if notice else res
 
-
     def header(self, root: Dict[str, Any], separators: Tuple[str, ...]):
         _usage = f"{lang.require('tools', 'format.ap.usage')}:"
         _example = f"{lang.require('tools', 'format.ap.example')}:"
@@ -339,13 +326,10 @@ class _RichTextFormatter(TextFormatter):
         opt_description = []
         max_len = 1
         for opt in (i for i in parts if isinstance(i, Option) and not isinstance(i, (Completion, Shortcut))):
-            alias_text = (
-                (f'{{{" ".join(opt.requires)}}} ' if opt.requires else "")
-                + ", ".join(sorted(opt.aliases, key=len))
-            )
+            name = (f'{{{" ".join(opt.requires)}}} ' if opt.requires else "") + ", ".join(sorted(opt.aliases, key=len))
             options.append(
                 self._convert(
-                    f"  {alias_text}{tuple(opt.separators)[0]}{self.parameters(opt.args)}",
+                    f"  {name}{tuple(opt.separators)[0]}{self.parameters(opt.args)}",
                     "primary"
                 )
             )
@@ -354,8 +338,8 @@ class _RichTextFormatter(TextFormatter):
             max_len = max(max(map(lambda x: len(x), options)), max_len)
         subcommands = []
         sub_description = []
-        for sub in filter(lambda x: isinstance(x, Subcommand), parts):
-            name = " ".join(sub.requires) + (" " if sub.requires else "") + sub.name
+        for sub in (i for i in parts if isinstance(i, Subcommand)):
+            name = (f'{{{" ".join(sub.requires)}}} ' if sub.requires else "") + ", ".join(sorted(sub.aliases, key=len))
             args = self.parameters(sub.args)
             subcommands.append(
                 self._convert(
@@ -379,9 +363,11 @@ class _RichTextFormatter(TextFormatter):
         subcommand_help = f"{self._convert(_sub, 'warn')}\n{subcommand_string}\n" if subcommand_string else ""
         return f"{subcommand_help}{option_help}"
 
+
 class RichTextFormatter(_RichTextFormatter):
     """argparser 风格的帮助文本格式化器, 增加 rich 的颜色标记，可用 rich.console 打印"""
     csl_code = False
+
 
 class RichConsoleFormatter(_RichTextFormatter):
     """argparser 风格的帮助文本格式化器, 增加控制台颜色标记"""
