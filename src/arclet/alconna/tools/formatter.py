@@ -1,10 +1,10 @@
-from typing import List, Dict, Any, Union, Tuple, Optional
+from typing import List, Union, Tuple, Optional
 from nepattern import Empty, ANY, AnyString
 from tarina import lang
 from arclet.alconna import AllParam
 from arclet.alconna.args import Args, Arg
 from arclet.alconna.base import Subcommand, Option, Shortcut, Completion
-from arclet.alconna.formatter import TextFormatter, Trace
+from arclet.alconna.formatter import TextFormatter, Trace, TraceHead
 
 
 class ShellTextFormatter(TextFormatter):
@@ -19,14 +19,14 @@ class ShellTextFormatter(TextFormatter):
         sub_names = f"{{{','.join(sub_names)}}}" if sub_names else ""
         opt_names = (" ".join(f"[{i}]" for i in opt_names) + "\n") if opt_names else ""
         topic = f"{lang.require('tools', 'format.ap.title')}: {trace.head['name']} {opt_names} {sub_names}"
-        title, desc, usage, example = self.header(trace.head, trace.separators)
+        title, desc, usage, example = self.header(trace.head)
         param = self.parameters(trace.args)
         body = self.body(parts)
         res = topic
         if desc:
             res = f"{desc}\n\n{res}"
         if param:
-            res += f"\n\n{lang.require('tools', 'format.ap.base')}: {title}{param}"
+            res += f"\n\n{lang.require('tools', 'format.ap.base')}: {title}{trace.separators[0]}{param}"
         if usage:
             res += f"\n{usage}"
         if body:
@@ -64,15 +64,11 @@ class ShellTextFormatter(TextFormatter):
         return f"{res}\n{lang.require('tools', 'format.ap.notice')}:\n  - " + \
             "\n  - ".join(f"{v[0]}: {v[1]}" for v in notice) if notice else res
 
-    def header(self, root: Dict[str, Any], separators: Tuple[str, ...]):
+    def header(self, root: TraceHead):
         help_string = f"{desc}" if (desc := root.get("description")) else ""
         usage = f"{lang.require('tools', 'format.ap.usage')}: {usage}" if (usage := root.get("usage")) else ""
         example = f"{lang.require('tools', 'format.ap.example')}: {example}" if (example := root.get("example")) else ""
-        prefixs = f"[{''.join(map(str, prefixs))}]" if (prefixs := root.get("prefix", [])) != [] else ""
-        cmd = f"{prefixs}{root.get('name', '')}"
-        sep = separators[0]
-        command_string = (cmd or root["name"]) + sep
-        return command_string, help_string, usage, example
+        return root["name"], help_string, usage, example
 
     def body(self, parts: List[Union[Option, Subcommand]]) -> str:
         options = []
@@ -125,19 +121,12 @@ class MarkdownTextFormatter(TextFormatter):
             if (example := root.get("example"))
             else ""
         )
-
-        prefixs = (
-            f"&#91;{''.join(map(str, prefixs))}&#93;"
-            if (prefixs := root.get("prefix", [])) and prefixs != []
-            else ""
-        )
-        cmd = f"{prefixs}{root.get('name', '')}"
-        command_string = cmd or (root["name"] + separators[0])
+        command_string = root["name"].replace("[", "&#91;").replace("]", "&#93;")
         body = self.body(trace.body)
         res = (
             f"## {help_string}\n\n"
             f"### {lang.require('tools', 'format.md.title')}: \n\n"
-            f"**{command_string} {params}**{notice_text}"
+            f"**{command_string}{separators[0]}{params}**{notice_text}"
         )
         if usage:
             res += f"\n\n{usage}"
@@ -261,7 +250,7 @@ class _RichTextFormatter(TextFormatter):
         opt_names = self._convert((" ".join(f"[{i}]" for i in opt_names) + "\n"), 'info') if opt_names else ""
         title = f"{lang.require('tools', 'format.ap.title')}:"
         topic = f"{self._convert(title, 'warn')} {self._convert(trace.head['name'], 'msg')} {opt_names} {sub_names}"
-        cmd, desc, usage, example = self.header(trace.head, trace.separators)
+        cmd, desc, usage, example = self.header(trace.head)
         param = self.parameters(trace.args)
         body = self.body(parts)
         res = topic
@@ -270,7 +259,7 @@ class _RichTextFormatter(TextFormatter):
         if param:
             _base = lang.require('tools', 'format.ap.base')
             _param = self._convert(param, 'success')
-            res += f"\n\n{self._convert(_base, 'warn')}: {cmd}{param}"
+            res += f"\n\n{self._convert(_base, 'warn')}: {cmd}{self._convert(trace.separators[0], 'msg')}{param}"
         if usage:
             res += f"\n{usage}"
         if body:
@@ -309,16 +298,13 @@ class _RichTextFormatter(TextFormatter):
         return f"{res}\n{_not}\n  - " + \
             "\n  - ".join(self._convert(f"{v[0]}: {v[1]}", "success") for v in notice) if notice else res
 
-    def header(self, root: Dict[str, Any], separators: Tuple[str, ...]):
+    def header(self, root: TraceHead):
         _usage = f"{lang.require('tools', 'format.ap.usage')}:"
         _example = f"{lang.require('tools', 'format.ap.example')}:"
         help_string = f"{desc}" if (desc := root.get("description")) else ""
         usage = f"{self._convert(_usage, 'warn')} {usage}\n" if (usage := root.get("usage")) else ""
         example = f"{self._convert(_example, 'warn')} {example}\n" if (example := root.get("example")) else ""
-        prefixs = f"[{''.join(map(str, prefixs))}]" if (prefixs := root.get("prefix", [])) != [] else ""
-        cmd = f"{prefixs}{root.get('name', '')}"
-        sep = separators[0]
-        command_string = self._convert((cmd or root["name"]) + sep, "msg")
+        command_string = self._convert(root["name"], "msg")
         return command_string, help_string, usage, example
 
     def body(self, parts: List[Union[Option, Subcommand]]) -> str:

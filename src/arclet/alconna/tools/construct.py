@@ -478,12 +478,12 @@ class AlconnaString:
         self.options = []
         self.shortcuts = {}
         self.actions = []
-        self.meta = CommandMeta(description=help_text or command, fuzzy_match=True)
         head, others = split_once(command, (" ",))
         if mat := re.match(r"^\[(.+?)]$", head):
             self.buffer["prefixes"] = mat[1].split("|")
         else:
             self.buffer["command"] = head.lstrip()
+        self.meta = CommandMeta(description=help_text or self.buffer.get("command"), fuzzy_match=True)
         if help_string := re.findall(r"(?: )#(.+)$", others):  # noqa
             self.meta.description = help_string[0]
             others = others[: -len(help_string[0]) - 1].rstrip()
@@ -531,6 +531,35 @@ class AlconnaString:
         self.options.append(_opt)
         return self
 
+    def subcommand(self, name: str, default: Any = None):
+        """添加一个子命令
+
+        Args:
+            name (str): 子命令的名称
+            default (Any, optional): 子命令的默认值.
+        """
+        _default = default
+        if isinstance(default, dict):
+            _default = OptionResult(args=default)
+        help_text = None
+        if help_string := re.findall(r"(?: )#(.+)$", name):  # noqa
+            help_text = help_string[0]
+            name = name[: -len(help_string[0]) - 1].rstrip()
+        parts = split(name, (" ",))
+        aliases = []
+        index = 0
+        for part in parts:
+            if part.startswith("<") or part.startswith("["):
+                break
+            aliases.append(part)
+            index += 1
+        _args = Args()
+        if parts[index:]:
+            custom_types = getattr(inspect.getmodule(inspect.stack()[1][0]), "__dict__", {})
+            _args = self.args_gen(" ".join(parts[index:]), custom_types.copy())
+        _opt = Subcommand("|".join(aliases), _args, dest=name, default=_default, help_text=help_text)
+        return self
+
     def usage(self, content: str):
         """设置命令的使用方法"""
         self.meta.usage = content
@@ -553,9 +582,6 @@ class AlconnaString:
 
     def build(self):
         """构造为 Alconna 对象"""
-        if "aliases" in self.buffer:
-            self.buffer["command"] = f"re:({self.buffer['command']}|" + "|".join(self.buffer["aliases"]) + ")"
-            self.buffer.pop("aliases")
         alc = Alconna(*self.buffer.values(), *self.options, meta=self.meta)
         for key, args in self.shortcuts.items():
             alc.shortcut(key, args)
@@ -864,7 +890,7 @@ class ObjectMounter(Alconna[TDC], Generic[T, TDC]):
         _options.extend(
             SubClassMounter(cls, self.cb_behavior, "")
             for name, cls in inspect.getmembers(obj, inspect.isclass)
-            if not name.startswith("_")
+            if not name.startswith("_") and not name.endswith("Config")
         )
         main_args = Args.from_callable(obj.__init__)[0]
         for arg in main_args.argument:
