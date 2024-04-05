@@ -14,7 +14,7 @@ readme = "README.md"
 license = {text = "MIT"}
 [build-system]
 requires = ["pdm-backend"]
-build-backend = "pdm.backends"
+build-backend = "pdm.backend"
 
 [tool]
 [tool.pdm]
