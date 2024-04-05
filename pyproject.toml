@@ -1,20 +1,20 @@
 [project]
 name = "arclet-alconna-tools"
-version = "0.7.1"
+version = "0.7.2"
 description = "Builtin Tools for Alconna"
 authors = [
     {name = "RF-Tar-Railt", email = "rf_tar_railt@qq.com"},
 ]
 dependencies = [
     "nepattern<1.0.0,>=0.6.5",
-    "arclet-alconna>=1.8.6",
+    "arclet-alconna>=1.8.7",
 ]
 requires-python = ">=3.8"
 readme = "README.md"
 license = {text = "MIT"}
 [build-system]
-requires = ["pdm-pep517>=1.0.0"]
-build-backend = "pdm.pep517.api"
+requires = ["pdm-backend"]
+build-backend = "pdm.backends"
 
 [tool]
 [tool.pdm]
