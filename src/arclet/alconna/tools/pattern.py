@@ -17,7 +17,7 @@ from .debug import analyse_args
 TOrigin = TypeVar("TOrigin")
 
 
-class ObjectPattern(BasePattern[TOrigin, Any]):
+class ObjectPattern(BasePattern[TOrigin, Any, Literal[MatchMode.TYPE_CONVERT]]):
     def __init__(
         self,
         origin: Type[TOrigin],
@@ -54,10 +54,9 @@ class ObjectPattern(BasePattern[TOrigin, Any]):
                 ):
                     anno = BasePattern(
                         mode=MatchMode.TYPE_CONVERT,
-                        origin=Any,
+                        origin=Any,  # type: ignore
                         converter=lambda _, x: suppliers[name](x),
                         alias=anno.__name__,
-                        accepts=Any,
                     )
                 elif len(_s_sig.parameters) == 0 or (
                     len(_s_sig.parameters) == 1 and inspect.ismethod(suppliers[name])
