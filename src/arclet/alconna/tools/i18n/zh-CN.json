@@ -1,4 +1,5 @@
 {
+  "$schema": "./.lang.schema.json",
   "tools": {
     "actions.inclusion": "{target} 必须存在",
     "actions.exclusion": "{left} 与 {right} 不能同时存在",

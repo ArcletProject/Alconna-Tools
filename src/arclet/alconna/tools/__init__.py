@@ -1,4 +1,4 @@
-from .config import lang as _lang  # noqa
+from .i18n import lang as lang  # noqa
 from .construct import AlconnaDecorate as AlconnaDecorate
 from .construct import AlconnaFire as AlconnaFire
 from .construct import AlconnaFormat as AlconnaFormat

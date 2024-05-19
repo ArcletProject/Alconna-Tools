@@ -1,4 +1,5 @@
 {
+  "$schema": "./.lang.schema.json",
   "tools": {
     "actions.inclusion": "{target} must be matched",
     "actions.exclusion": "{left} and {right} cannot be both matched",
