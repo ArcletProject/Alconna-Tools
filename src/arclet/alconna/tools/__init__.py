@@ -5,8 +5,8 @@ from .construct import AlconnaFormat as AlconnaFormat
 from .construct import AlconnaString as AlconnaString
 from .construct import Argument as Argument
 from .construct import Executor as Executor
-from .construct import alconna_from_format
-from .construct import alconna_from_object
+from .construct import alconna_from_format as alconna_from_format
+from .construct import alconna_from_object as alconna_from_object
 from .construct import delegate as delegate
 from .pattern import ObjectPattern as ObjectPattern
 from .checker import simple_type as simple_type

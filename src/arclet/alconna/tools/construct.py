@@ -13,6 +13,7 @@ from typing import (
     Dict,
     Generic,
     List,
+    Literal,
     Mapping,
     Optional,
     Type,
@@ -23,7 +24,6 @@ from typing import (
     overload
 )
 
-
 from arclet.alconna.args import ArgFlag, Args, TAValue, Arg
 from arclet.alconna.action import Action
 from arclet.alconna.arparma import Arparma, ArparmaBehavior
@@ -32,10 +32,10 @@ from arclet.alconna.model import OptionResult
 from arclet.alconna.core import Alconna
 from arclet.alconna.exceptions import NullMessage
 from arclet.alconna.manager import command_manager, ShortcutArgs
-from arclet.alconna.typing import TDC, KeyWordVar, MultiVar, CommandMeta, AllParam
-from nepattern import ANY, all_patterns, type_parser, RawStr
+from arclet.alconna.typing import TDC, KeyWordVar, MultiVar, CommandMeta, AllParam, ShortcutRegWrapper
+from nepattern import ANY, all_patterns, type_parser, RawStr, TPattern
 from tarina import split, split_once, init_spec, lang, Empty
-from typing_extensions import get_origin, NotRequired
+from typing_extensions import get_origin, NotRequired, Self
 
 T = TypeVar("T")
 TCallable = TypeVar("TCallable", bound=Callable)
@@ -333,8 +333,7 @@ def args_from_list(args: List[List[str]], custom_types: Dict[str, type]) -> Args
                 )
             if _multi:
                 value = MultiVar(
-                    KeyWordVar(value) if _kw else value,
-                    _slice if _slice > 1 else _multi,  # type: ignore
+                    KeyWordVar(value) if _kw else value, _slice if _slice > 1 else _multi,  # type: ignore
                 )
         _args.add(name, value=value, default=default)  # type: ignore
     return _args
@@ -467,34 +466,79 @@ class AlconnaString:
                 temp[-1] += char
         return args
 
-    def __init__(self, command: str, help_text: Optional[str] = None):
+    def __init__(self, command: str, help_text: Optional[str] = None, meta: Optional[CommandMeta] = None):
         """创建 AlconnaString
 
         Args:
             command (str): 命令字符串, 例如 `test <message:str:hello> #HELP_STRING`
             help_text (Optional[str], optional): 选填的命令的帮助文本.
+            meta (Optional[CommandMeta], optional): 选填的命令元数据.
         """
         self.buffer = {}
         self.options = []
-        self.shortcuts = {}
+        self.shortcuts = []
         self.actions = []
         head, others = split_once(command, (" ",))
-        if mat := re.match(r"^\[(.+?)]$", head):
+        self.meta = CommandMeta(fuzzy_match=True) if meta is None else meta
+        if help_text:
+            self.meta.description = help_text
+        elif self.meta.description == "Unknown":
+            self.meta.description = head
+        if mat := re.match(r"^\[(.+?)]", head):
             self.buffer["prefixes"] = mat[1].split("|")
-        else:
-            self.buffer["command"] = head.lstrip()
-        self.meta = CommandMeta(description=help_text or self.buffer.get("command"), fuzzy_match=True)
+            head = head[mat.end():]
+        self.buffer["command"] = head.lstrip()
         if help_string := re.findall(r"(?: )#(.+)$", others):  # noqa
             self.meta.description = help_string[0]
             others = others[: -len(help_string[0]) - 1].rstrip()
         custom_types = getattr(inspect.getmodule(inspect.stack()[1][0]), "__dict__", {})
         self.buffer["main_args"] = self.args_gen(others, custom_types.copy())
 
-    def alias(self, alias: str):
+    def alias(self, alias: str) -> Self:
         self.shortcut(alias, {"prefix": True})
         return self
 
-    def option(self, name: str, opt: Optional[str] = None, default: Any = None, action: Optional[Action] = None):
+    def config(
+        self,
+        fuzzy_match: bool = False,
+        fuzzy_threshold: float = 0.6,
+        raise_exception: bool = False,
+        hide: bool = False,
+        hide_shortcut: bool = False,
+        keep_crlf: bool = False,
+        compact: bool = False,
+        strict: bool = True,
+        context_style: Optional[Literal["bracket", "parentheses"]] = None,
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> Self:
+        """设置命令的元数据
+
+        Args:
+            fuzzy_match (bool, optional): 是否开启模糊匹配. Defaults to False.
+            fuzzy_threshold (float, optional): 模糊匹配阈值. Defaults to 0.6.
+            raise_exception (bool, optional): 是否抛出异常. Defaults to False.
+            hide (bool, optional): 是否对manager隐藏. Defaults to False.
+            hide_shortcut (bool, optional): 快捷指令是否在help信息中隐藏. Defaults to False.
+            keep_crlf (bool, optional): 是否保留换行字符. Defaults to False.
+            compact (bool, optional): 是否允许第一个参数紧随头部. Defaults to False.
+            strict (bool, optional): 是否严格匹配，若为 False 则未知参数将作为名为 $extra 的参数. Defaults to True.
+            context_style (Optional[Literal["bracket", "parentheses"]], optional): 上下文插值的风格. Defaults to None.
+            extra (Optional[Dict[str, Any]], optional): 额外的元数据. Defaults to None.
+        """
+        self.meta.fuzzy_match = fuzzy_match
+        self.meta.fuzzy_threshold = fuzzy_threshold
+        self.meta.raise_exception = raise_exception
+        self.meta.hide = hide
+        self.meta.hide_shortcut = hide_shortcut
+        self.meta.keep_crlf = keep_crlf
+        self.meta.compact = compact
+        self.meta.strict = strict
+        self.meta.context_style = context_style
+        if extra:
+            self.meta.extra.update(extra)
+        return self
+
+    def option(self, name: str, opt: Optional[str] = None, default: Any = None, action: Optional[Action] = None) -> Self:
         """添加一个选项
 
         Args:
@@ -531,7 +575,7 @@ class AlconnaString:
         self.options.append(_opt)
         return self
 
-    def subcommand(self, name: str, default: Any = None):
+    def subcommand(self, name: str, default: Any = None) -> Self:
         """添加一个子命令
 
         Args:
@@ -560,22 +604,57 @@ class AlconnaString:
         _opt = Subcommand("|".join(aliases), _args, dest=name, default=_default, help_text=help_text)
         return self
 
-    def usage(self, content: str):
+    def usage(self, content: str) -> Self:
         """设置命令的使用方法"""
         self.meta.usage = content
         return self
 
-    def example(self, content: str):
+    def example(self, content: str) -> Self:
         """设置命令的使用示例"""
         self.meta.example = content
         return self
 
-    def shortcut(self, key: str, args: Optional[ShortcutArgs] = None):
+    @overload
+    def shortcut(self, key: Union[str, TPattern], args: Optional[ShortcutArgs] = None) -> Self:
+        """设置命令的快捷方式
+
+        Args:
+            key (str | re.Pattern[str]): 快捷命令名, 可传入正则表达式
+            args (ShortcutArgs): 快捷命令参数, 不传入时则尝试使用最近一次使用的命令
+        """
+        ...
+
+    @overload
+    def shortcut(
+        self,
+        key: Union[str, TPattern],
+        *,
+        command: Optional[str] = None,
+        arguments: Optional[list] = None,
+        fuzzy: bool = True,
+        prefix: bool = False,
+        wrapper: Optional[ShortcutRegWrapper] = None,
+        humanized: Optional[str] = None,
+    ) -> Self:
+        """设置命令的快捷方式
+
+        Args:
+            key (str | re.Pattern[str]): 快捷命令名, 可传入正则表达式
+            command (str): 快捷命令指向的命令
+            arguments (list[Any] | None, optional): 快捷命令参数, 默认为 `None`
+            fuzzy (bool, optional): 是否允许命令后随参数, 默认为 `True`
+            prefix (bool, optional): 是否调用时保留指令前缀, 默认为 `False`
+            wrapper (ShortcutRegWrapper, optional): 快捷指令的正则匹配结果的额外处理函数, 默认为 `None`
+            humanized (str, optional): 快捷指令的人类可读描述, 默认为 `None`
+        """
+        ...
+
+    def shortcut(self, key: Union[str, TPattern], args: Optional[ShortcutArgs] = None, **kwargs) -> Self:
         """设置命令的快捷方式"""
-        self.shortcuts[key] = args or {}
+        self.shortcuts.append((key, args, kwargs))
         return self
 
-    def action(self, func: Callable):
+    def action(self, func: Callable) -> Self:
         """设置命令的动作"""
         self.actions.append(func)
         return self
@@ -583,8 +662,8 @@ class AlconnaString:
     def build(self):
         """构造为 Alconna 对象"""
         alc = Alconna(*self.buffer.values(), *self.options, meta=self.meta)
-        for key, args in self.shortcuts.items():
-            alc.shortcut(key, args)
+        for key, args, kwargs in self.shortcuts:
+            alc.shortcut(key, args, **kwargs)  # type: ignore
         for action in self.actions:
             alc.bind()(action)
         return alc
