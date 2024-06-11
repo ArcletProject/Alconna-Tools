@@ -4,7 +4,7 @@ import re
 import sys
 import typing
 from contextlib import suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from functools import partial, wraps
 from types import FunctionType, MethodType, ModuleType
 from typing import (
@@ -479,7 +479,7 @@ class AlconnaString:
         self.shortcuts = []
         self.actions = []
         head, others = split_once(command, (" ",))
-        self.meta = CommandMeta(fuzzy_match=True) if meta is None else meta
+        self.meta = CommandMeta(fuzzy_match=True) if meta is None else CommandMeta(**asdict(meta))
         if help_text:
             self.meta.description = help_text
         elif self.meta.description == "Unknown":
@@ -611,7 +611,10 @@ class AlconnaString:
 
     def example(self, content: str) -> Self:
         """设置命令的使用示例"""
-        self.meta.example = content
+        if not self.meta.example:
+            self.meta.example = content
+        else:
+            self.meta.example += f"\n{content}"
         return self
 
     @overload
