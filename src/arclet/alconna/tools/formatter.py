@@ -5,6 +5,12 @@ from arclet.alconna import AllParam
 from arclet.alconna.args import Args, Arg
 from arclet.alconna.base import Subcommand, Option, Shortcut, Completion
 from arclet.alconna.formatter import TextFormatter, Trace, TraceHead
+import shutil
+
+
+def get_terminal_size():
+    size = shutil.get_terminal_size(fallback=(80, 24))
+    return size.columns
 
 
 class ShellTextFormatter(TextFormatter):
@@ -15,18 +21,18 @@ class ShellTextFormatter(TextFormatter):
     def format(self, trace: Trace) -> str:
         parts = trace.body  # type: ignore
         sub_names = [i.name for i in parts if isinstance(i, Subcommand)]
-        opt_names = [min(i.aliases, key=len) for i in parts if isinstance(i, Option) and i.name not in self.ignore_names]
-        sub_names = f"{{{','.join(sub_names)}}}" if sub_names else ""
-        opt_names = (" ".join(f"[{i}]" for i in opt_names) + "\n") if opt_names else ""
-        topic = f"{lang.require('tools', 'format.ap.title')}: {trace.head['name']} {opt_names} {sub_names}"
+        sub_names = " ..." if sub_names else ""
+        opts = {min(i.aliases, key=len): i for i in parts if isinstance(i, Option) and i.name not in self.ignore_names}
+        opt_names = " ".join((f"[{n}]" if opt.args.empty else f"[{n} {self.parameters(opt.args)}]") for n, opt in opts.items()) if opts else ""
+        topic = f"{lang.require('tools', 'format.ap.title')}: {trace.head['name']} {opt_names}{sub_names}"
         title, desc, usage, example = self.header(trace.head)
         param = self.parameters(trace.args)
         body = self.body(parts)
         res = topic
         if desc:
-            res = f"{desc}\n\n{res}"
+            res = f"{res}\n\n{desc}"
         if param:
-            res += f"\n\n{lang.require('tools', 'format.ap.base')}: {title}{trace.separators[0]}{param}"
+            res += f"\n{lang.require('tools', 'format.ap.base')}: {title}{trace.separators[0]}{param}"
         if usage:
             res += f"\n{usage}"
         if body:
@@ -60,6 +66,7 @@ class ShellTextFormatter(TextFormatter):
             else:
                 sep = f"[{'|'.join(arg.separators)!r}]"
             res += self.param(arg) + sep
+        res = res.rstrip(' ')
         notice = [(arg.name, arg.notice) for arg in args.argument if arg.notice]
         return f"{res}\n{lang.require('tools', 'format.ap.notice')}:\n  - " + \
             "\n  - ".join(f"{v[0]}: {v[1]}" for v in notice) if notice else res
@@ -72,34 +79,36 @@ class ShellTextFormatter(TextFormatter):
 
     def body(self, parts: List[Union[Option, Subcommand]]) -> str:
         options = []
-        opt_description = []
-        max_len = 1
+        width = get_terminal_size()
+        # max_len = 1
         for opt in (i for i in parts if isinstance(i, Option) and not isinstance(i, (Completion, Shortcut))):
             name = (f'{{{" ".join(opt.requires)}}} ' if opt.requires else "") + ", ".join(sorted(opt.aliases, key=len))
-            options.append(
-                f"  {name}{tuple(opt.separators)[0]}{self.parameters(opt.args)}"
-            )
-            opt_description.append(opt.help_text)
-        if options:
-            max_len = max(max(map(lambda x: len(x), options)), max_len)
+            text = f"  {name}{tuple(opt.separators)[0]}{self.parameters(opt.args)}"
+            help_text = opt.help_text
+            if len(help_text) + 24 > width:
+                _prts = [help_text[i:i + (width - 24)] for i in range(0, len(help_text), width - 24)]
+                help_text = f"\n{' ' * 24}".join(_prts)
+            if len(text) > 22:
+                text += f"\n{' ' * 24}{help_text}"
+            else:
+                text += f"{' ' * (24 - len(text))}{help_text}"
+            options.append(text)
         subcommands = []
-        sub_description = []
         for sub in (i for i in parts if isinstance(i, Subcommand)):
             name = (f'{{{" ".join(sub.requires)}}} ' if sub.requires else "") + ", ".join(sorted(sub.aliases, key=len))
             args = self.parameters(sub.args)
-            subcommands.append(
-                f"    {name}{tuple(sub.separators)[0]}{args}"
-            )
-            sub_topic = " ".join(f"[{i.name}]" for i in sub.options)  # type: ignore
-            sub_description.append(f"{sub.help_text} {sub_topic}")
-        if subcommands:
-            max_len = max(max(map(lambda x: len(x), subcommands)), max_len)
-        option_string = "\n".join(
-            f"{i.ljust(max_len)}    {j}" for i, j in zip(options, opt_description)
-        )
-        subcommand_string = "\n".join(
-            f"{i.ljust(max_len)}    {j}" for i, j in zip(subcommands, sub_description)
-        )
+            text = f"  {name}{tuple(sub.separators)[0]}{args}"
+            help_text = sub.help_text
+            if len(help_text) + 24 > width:
+                _prts = [help_text[i:i + (width - 24)] for i in range(0, len(help_text), width - 24)]
+                help_text = f"\n{' ' * 24}".join(_prts)
+            if len(text) > 22:
+                text += f"\n{' ' * 24}{help_text}"
+            else:
+                text += f"{' ' * (24 - len(text))}{help_text}"
+            subcommands.append(text)
+        option_string = "\n".join(options)
+        subcommand_string = "\n".join(subcommands)
         option_help = f"{lang.require('tools', 'format.ap.opt')}:\n{option_string}\n" if option_string else ""
         subcommand_help = f"{lang.require('tools', 'format.ap.sub')}:\n{subcommand_string}\n" if subcommand_string else ""
         return f"{subcommand_help}{option_help}"
@@ -152,7 +161,7 @@ class MarkdownTextFormatter(TextFormatter):
             arg += f" = {parameter.field.display}"
         return f"{arg}&#93;" if parameter.optional else f"{arg}&gt;"
 
-    def parameters(self, args: Args) -> Tuple[str, Optional[List[str]]]:
+    def parameters(self, args: Args) -> Tuple[str, Optional[List[str]]]:  # type: ignore
         """参数列表的描述"""
         res = ""
         for arg in args.argument:
@@ -244,22 +253,22 @@ class _RichTextFormatter(TextFormatter):
 
     def format(self, trace: Trace) -> str:
         parts = trace.body  # type: ignore
-        sub_names = [i.name for i in filter(lambda x: isinstance(x, Subcommand), parts)]
-        opt_names = [min(i.aliases, key=len) for i in parts if isinstance(i, Option) and i.name not in self.ignore_names]
-        sub_names = self._convert(f"{{{','.join(sub_names)}}}", "info") if sub_names else ""
-        opt_names = self._convert((" ".join(f"[{i}]" for i in opt_names) + "\n"), 'info') if opt_names else ""
+        sub_names = [i.name for i in parts if isinstance(i, Subcommand)]
+        sub_names = self._convert(" ...", "info") if sub_names else ""
+        opts = {min(i.aliases, key=len): i for i in parts if isinstance(i, Option) and i.name not in self.ignore_names}
+        opt_names = self._convert(" ".join(f"[{n}]" if opt.args.empty else f"[{n} {self.parameters(opt.args)}]" for n, opt in opts.items()), "info") if opts else ""
         title = f"{lang.require('tools', 'format.ap.title')}:"
-        topic = f"{self._convert(title, 'warn')} {self._convert(trace.head['name'], 'msg')} {opt_names} {sub_names}"
+        topic = f"{self._convert(title, 'warn')} {self._convert(trace.head['name'], 'msg')} {opt_names}{sub_names}"
         cmd, desc, usage, example = self.header(trace.head)
         param = self.parameters(trace.args)
         body = self.body(parts)
         res = topic
         if desc:
-            res = f"{desc}\n\n{res}"
+            res = f"{res}\n\n{desc}"
         if param:
             _base = lang.require('tools', 'format.ap.base')
             _param = self._convert(param, 'success')
-            res += f"\n\n{self._convert(_base, 'warn')}: {cmd}{self._convert(trace.separators[0], 'msg')}{param}"
+            res += f"\n{self._convert(_base, 'warn')}: {cmd}{self._convert(trace.separators[0], 'msg')}{_param}"
         if usage:
             res += f"\n{usage}"
         if body:
@@ -293,6 +302,7 @@ class _RichTextFormatter(TextFormatter):
             else:
                 sep = f"[{'|'.join(arg.separators)!r}]"
             res += self.param(arg) + sep
+        res = res.rstrip(' ')
         notice = [(arg.name, arg.notice) for arg in args.argument if arg.notice]
         _not = self._convert(f"{lang.require('tools', 'format.ap.notice')}:", 'warn')
         return f"{res}\n{_not}\n  - " + \
@@ -309,40 +319,42 @@ class _RichTextFormatter(TextFormatter):
 
     def body(self, parts: List[Union[Option, Subcommand]]) -> str:
         options = []
-        opt_description = []
-        max_len = 1
+        width = get_terminal_size()
+        # max_len = 1
         for opt in (i for i in parts if isinstance(i, Option) and not isinstance(i, (Completion, Shortcut))):
             name = (f'{{{" ".join(opt.requires)}}} ' if opt.requires else "") + ", ".join(sorted(opt.aliases, key=len))
-            options.append(
-                self._convert(
-                    f"  {name}{tuple(opt.separators)[0]}{self.parameters(opt.args)}",
-                    "primary"
+            text = f"  {name}{tuple(opt.separators)[0]}{self.parameters(opt.args)}"
+            help_text = opt.help_text
+            if len(help_text) + 24 > width:
+                _prts = [help_text[i:i + (width - 24)] for i in range(0, len(help_text), width - 24)]
+                help_text = f"\n{' ' * 24}".join(_prts)
+            if len(text) > 22:
+                options.append(
+                    self._convert(text, "primary") + f"\n{' ' * 24}{help_text}"
                 )
-            )
-            opt_description.append(opt.help_text)
-        if options:
-            max_len = max(max(map(lambda x: len(x), options)), max_len)
+            else:
+                options.append(
+                    self._convert(text, "primary") + f"{' ' * (24 - len(text))}{help_text}"
+                )
         subcommands = []
-        sub_description = []
         for sub in (i for i in parts if isinstance(i, Subcommand)):
             name = (f'{{{" ".join(sub.requires)}}} ' if sub.requires else "") + ", ".join(sorted(sub.aliases, key=len))
             args = self.parameters(sub.args)
-            subcommands.append(
-                self._convert(
-                    f"    {name}{tuple(sub.separators)[0]}{args}",
-                    "primary"
+            text = f"  {name}{tuple(sub.separators)[0]}{args}"
+            help_text = sub.help_text
+            if len(help_text) + 24 > width:
+                _prts = [help_text[i:i + (width - 24)] for i in range(0, len(help_text), width - 24)]
+                help_text = f"\n{' ' * 24}".join(_prts)
+            if len(text) > 22:
+                subcommands.append(
+                    self._convert(text, "primary") + f"\n{' ' * 24}{help_text}"
                 )
-            )
-            sub_topic = " ".join(f"[{i.name}]" for i in sub.options)  # type: ignore
-            sub_description.append(f"{sub.help_text} {sub_topic}")
-        if subcommands:
-            max_len = max(max(map(lambda x: len(x), subcommands)), max_len)
-        option_string = "\n".join(
-            f"{i.ljust(max_len)}    {j}" for i, j in zip(options, opt_description)
-        )
-        subcommand_string = "\n".join(
-            f"{i.ljust(max_len)}    {j}" for i, j in zip(subcommands, sub_description)
-        )
+            else:
+                subcommands.append(
+                    self._convert(text, "primary") + f"{' ' * (24 - len(text))}{help_text}"
+                )
+        option_string = "\n".join(options)
+        subcommand_string = "\n".join(subcommands)
         _opt = f"{lang.require('tools', 'format.ap.opt')}:"
         _sub = f"{lang.require('tools', 'format.ap.sub')}:"
         option_help = f"{self._convert(_opt, 'warn')}\n{option_string}\n" if option_string else ""
