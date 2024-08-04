@@ -24,6 +24,7 @@ from typing import (
     overload
 )
 
+from arclet.alconna import Namespace
 from arclet.alconna.args import ArgFlag, Args, TAValue, Arg
 from arclet.alconna.action import Action
 from arclet.alconna.arparma import Arparma, ArparmaBehavior
@@ -32,7 +33,7 @@ from arclet.alconna.model import OptionResult
 from arclet.alconna.core import Alconna
 from arclet.alconna.exceptions import NullMessage
 from arclet.alconna.manager import command_manager, ShortcutArgs
-from arclet.alconna.typing import TDC, KeyWordVar, MultiVar, CommandMeta, AllParam, ShortcutRegWrapper
+from arclet.alconna.typing import TDC, KeyWordVar, MultiVar, CommandMeta, AllParam, ShortcutRegWrapper, StrMulti
 from nepattern import ANY, all_patterns, type_parser, RawStr, TPattern
 from tarina import split, split_once, init_spec, lang, Empty
 from typing_extensions import get_origin, NotRequired, Self
@@ -322,9 +323,12 @@ def args_from_list(args: List[List[str]], custom_types: Dict[str, type]) -> Args
                 _multi = mat["multi"][0]
                 _kw = len(mat["multi"]) > 1
                 _slice = int(mat["slice"] or -1)
+            elif value in ("+str", "mstr", "strm"):
+                value = "StrMulti"
             with suppress(NameError, ValueError, TypeError):
                 _types = custom_types.copy()
                 _types.update(typing.__dict__)
+                _types["StrMulti"] = StrMulti  # type: ignore
                 value = all_patterns().get(value, None) or type_parser(eval(value, custom_types))  # type: ignore
                 default = (
                     (get_origin(value.origin) or value.origin)(default)
@@ -538,6 +542,10 @@ class AlconnaString:
             self.meta.extra.update(extra)
         return self
 
+    def namespace(self, ns: Union[str, Namespace]):
+        self.buffer["namespace"] = ns
+        return self
+
     def option(self, name: str, opt: Optional[str] = None, default: Any = None, action: Optional[Action] = None) -> Self:
         """添加一个选项
 
@@ -664,7 +672,8 @@ class AlconnaString:
 
     def build(self):
         """构造为 Alconna 对象"""
-        alc = Alconna(*self.buffer.values(), *self.options, meta=self.meta)
+        ns = self.buffer.pop("namespace", None)
+        alc = Alconna(*self.buffer.values(), *self.options, namespace=ns, meta=self.meta)
         for key, args, kwargs in self.shortcuts:
             alc.shortcut(key, args, **kwargs)  # type: ignore
         for action in self.actions:
@@ -997,14 +1006,14 @@ class ObjectMounter(Alconna[TDC], Generic[T, TDC]):
 
 
 @overload
-def alconna_from_object(
+def alconna_from_object(  # type: ignore
     target: ModuleType, command: Optional[TDC] = None, config: Optional[MountConfig] = None,
 ) -> ModuleMounter:
     ...
 
 
 @overload
-def alconna_from_object(
+def alconna_from_object(  # type: ignore
     target: Type[T], command: Optional[TDC] = None, config: Optional[MountConfig] = None,
 ) -> ClassMounter[T, TDC]:
     ...

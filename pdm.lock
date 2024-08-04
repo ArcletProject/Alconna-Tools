@@ -5,11 +5,11 @@
 groups = ["default", "dev"]
 strategy = ["cross_platform"]
 lock_version = "4.4.1"
-content_hash = "sha256:96666bcfc54a6bde65482e25ee57df8d3b5cdae14073456d11336cf174ffed4b"
+content_hash = "sha256:c3d77cac129451fe8797c07ecab9929ed00f195333012863cf66aab73ff0ba65"
 
 [[package]]
 name = "arclet-alconna"
-version = "1.8.15"
+version = "1.8.21"
 requires_python = ">=3.8"
 summary = "A High-performance, Generality, Humane Command Line Arguments Parser Library."
 dependencies = [
@@ -18,8 +18,8 @@ dependencies = [
     "typing-extensions>=4.5.0",
 ]
 files = [
-    {file = "arclet_alconna-1.8.15-py3-none-any.whl", hash = "sha256:9cc010e42f00a5201439318df3b2000234dce27fdc90d26813c3a295125e54e8"},
-    {file = "arclet_alconna-1.8.15.tar.gz", hash = "sha256:713a57bdfed3c3959600384e46358154ce33eec012615554beb5634d436507bc"},
+    {file = "arclet_alconna-1.8.21-py3-none-any.whl", hash = "sha256:5552da33317dad77a7da2870bc3efe28414a5ec91dc5e4e3d5985c03296d9710"},
+    {file = "arclet_alconna-1.8.21.tar.gz", hash = "sha256:3887f9dca239743c26f2e03f610e828549de0087cff9c8e9003b4a9686b8c836"},
 ]
 
 [[package]]
