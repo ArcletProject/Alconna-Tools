@@ -329,7 +329,7 @@ def args_from_list(args: List[List[str]], custom_types: Dict[str, type]) -> Args
                 _types = custom_types.copy()
                 _types.update(typing.__dict__)
                 _types["StrMulti"] = StrMulti  # type: ignore
-                value = all_patterns().get(value, None) or type_parser(eval(value, custom_types))  # type: ignore
+                value = all_patterns().get(value, None) or type_parser(eval(value, _types))  # type: ignore
                 default = (
                     (get_origin(value.origin) or value.origin)(default)
                     if default is not Empty
@@ -498,8 +498,9 @@ class AlconnaString:
         custom_types = getattr(inspect.getmodule(inspect.stack()[1][0]), "__dict__", {})
         self.buffer["main_args"] = self.args_gen(others, custom_types.copy())
 
-    def alias(self, alias: str) -> Self:
-        self.shortcut(alias, {"prefix": True})
+    def alias(self, *alias: str) -> Self:
+        for al in alias:
+            self.shortcut(al, {"prefix": True})
         return self
 
     def config(
@@ -546,7 +547,7 @@ class AlconnaString:
         self.buffer["namespace"] = ns
         return self
 
-    def option(self, name: str, opt: Optional[str] = None, default: Any = None, action: Optional[Action] = None) -> Self:
+    def option(self, name: str, opt: Optional[str] = None, default: Any = Empty, action: Optional[Action] = None) -> Self:
         """添加一个选项
 
         Args:
@@ -564,14 +565,14 @@ class AlconnaString:
             )
             return self
         help_text = None
-        if help_string := re.findall(r"(?: )#(.+)$", opt):  # noqa
+        if help_string := re.findall(r"(?: )?#(.+)$", opt):  # noqa
             help_text = help_string[0]
             opt = opt[: -len(help_string[0]) - 1].rstrip()
         parts = split(opt, (" ",))
         aliases = [f"--{name}"]
         index = 0
         for part in parts:
-            if part.startswith("<") or part.startswith("["):
+            if part.startswith("<") or part.startswith("[") or part.startswith("#"):
                 break
             aliases.append(part)
             index += 1
@@ -583,7 +584,7 @@ class AlconnaString:
         self.options.append(_opt)
         return self
 
-    def subcommand(self, name: str, default: Any = None) -> Self:
+    def subcommand(self, name: str, default: Any = Empty) -> Self:
         """添加一个子命令
 
         Args:
