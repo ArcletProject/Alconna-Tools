@@ -69,7 +69,7 @@ def analyse_header(
     **kwargs
 ):
     meta = CommandMeta(keep_crlf=False, fuzzy_match=False, raise_exception=raise_exception, context_style=context_style)
-    argv = Argv(meta, dev_space, separators=(sep,))
+    argv = Argv(meta, dev_space, separators=sep)
     command_header = Header.generate(command_name, headers, compact=compact)
     try:
         argv.enter(kwargs)
@@ -92,7 +92,7 @@ def analyse_option(
     argv = Argv(meta, dev_space)
     _analyser = _DummyAnalyser.__new__(_DummyAnalyser)
     _analyser.reset()
-    _analyser.command.separators = (" ",)
+    _analyser.command.separators = " "
     _analyser.need_main_args = False
     _analyser.command.options.append(option)
     default_compiler(_analyser, argv.param_ids)
@@ -119,7 +119,7 @@ def analyse_subcommand(
     argv = Argv(meta, dev_space)
     _analyser = _DummyAnalyser.__new__(_DummyAnalyser)
     _analyser.reset()
-    _analyser.command.separators = (" ",)
+    _analyser.command.separators = " "
     _analyser.need_main_args = False
     _analyser.command.options.append(subcommand)
     default_compiler(_analyser, argv.param_ids)

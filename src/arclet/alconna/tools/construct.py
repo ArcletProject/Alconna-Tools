@@ -25,7 +25,7 @@ from typing import (
 )
 
 from arclet.alconna import Namespace
-from arclet.alconna.args import ArgFlag, Args, TAValue, Arg
+from arclet.alconna.args import ArgFlag, Args, Arg
 from arclet.alconna.action import Action
 from arclet.alconna.arparma import Arparma, ArparmaBehavior
 from arclet.alconna.base import Option, Subcommand
@@ -33,7 +33,7 @@ from arclet.alconna.model import OptionResult
 from arclet.alconna.core import Alconna
 from arclet.alconna.exceptions import NullMessage
 from arclet.alconna.manager import command_manager, ShortcutArgs
-from arclet.alconna.typing import TDC, KeyWordVar, MultiVar, CommandMeta, AllParam, ShortcutRegWrapper, StrMulti
+from arclet.alconna.typing import TDC, TAValue, KeyWordVar, MultiVar, CommandMeta, AllParam, ShortcutRegWrapper, StrMulti
 from nepattern import ANY, all_patterns, type_parser, RawStr, TPattern
 from tarina import split, split_once, init_spec, lang, Empty
 from typing_extensions import get_origin, NotRequired, Self
@@ -390,7 +390,7 @@ def alconna_from_format(
     """
     formats = format_args or {}
     _key_ref = 0
-    strings = split(format_string.replace("{", "\"{").replace("}", "}\""), (" ",))
+    strings = split(format_string.replace("{", "\"{").replace("}", "}\""), " ")
     command = strings.pop(0)
     data = []
     if mat := re.match(r"^\[(.+?)]$", command):
@@ -482,7 +482,7 @@ class AlconnaString:
         self.options = []
         self.shortcuts = []
         self.actions = []
-        head, others = split_once(command, (" ",))
+        head, others = split_once(command, " ")
         self.meta = CommandMeta(fuzzy_match=True) if meta is None else CommandMeta(**asdict(meta))
         if help_text:
             self.meta.description = help_text
@@ -568,7 +568,7 @@ class AlconnaString:
         if help_string := re.findall(r"(?: )?#(.+)$", opt):  # noqa
             help_text = help_string[0]
             opt = opt[: -len(help_string[0]) - 1].rstrip()
-        parts = split(opt, (" ",))
+        parts = split(opt, " ")
         aliases = [f"--{name}"]
         index = 0
         for part in parts:
@@ -598,7 +598,7 @@ class AlconnaString:
         if help_string := re.findall(r"(?: )#(.+)$", name):  # noqa
             help_text = help_string[0]
             name = name[: -len(help_string[0]) - 1].rstrip()
-        parts = split(name, (" ",))
+        parts = split(name, " ")
         aliases = []
         index = 0
         for part in parts:

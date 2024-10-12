@@ -1,15 +1,15 @@
 [project]
 name = "arclet-alconna-tools"
-version = "0.7.9"
+version = "0.7.10"
 description = "Builtin Tools for Alconna"
 authors = [
     {name = "RF-Tar-Railt", email = "rf_tar_railt@qq.com"},
 ]
 dependencies = [
     "nepattern<1.0.0,>=0.7.3",
-    "arclet-alconna>=1.8.21",
+    "arclet-alconna>=1.8.31",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 readme = "README.md"
 license = {text = "MIT"}
 [build-system]
