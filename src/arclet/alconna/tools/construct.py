@@ -611,6 +611,7 @@ class AlconnaString:
             custom_types = getattr(inspect.getmodule(inspect.stack()[1][0]), "__dict__", {})
             _args = self.args_gen(" ".join(parts[index:]), custom_types.copy())
         _opt = Subcommand("|".join(aliases), _args, dest=name, default=_default, help_text=help_text)
+        self.options.append(_opt)
         return self
 
     def usage(self, content: str) -> Self:
