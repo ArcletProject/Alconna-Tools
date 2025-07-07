@@ -499,6 +499,7 @@ class AlconnaString:
         self.buffer["main_args"] = self.args_gen(others, custom_types.copy())
 
     def alias(self, *alias: str) -> Self:
+        """设置命令的别名"""
         for al in alias:
             self.shortcut(al, {"prefix": True})
         return self
@@ -550,6 +551,12 @@ class AlconnaString:
     def option(self, name: str, opt: Optional[str] = None, default: Any = Empty, action: Optional[Action] = None) -> Self:
         """添加一个选项
 
+        name 与 opt 有四种情况:
+        - 1. name 为选项的实际名称, opt 为选项的字符串, 例如 `option("foo", "--foo -f <val:bool>")`
+        - 2. name 为选项的实际名称, opt 为参数, 例如 `option("foo", "<val:bool>")`，此时 opt 默认为 `--foo`
+        - 3. name 为选项的实际名称, opt 为 None, 例如 `option("foo")`，此时 opt 默认为 `foo`
+        - 4. name 为选项的字符串, opt 为 None，例如 `option("--foo -f <val:bool>")`，此时 name 默认为 `foo`
+
         Args:
             name (str): 选项的实际名称
             opt (Optional[str], optional): 选项的字符串, 例如 `--foo -f <val:bool>`.
@@ -559,17 +566,14 @@ class AlconnaString:
         _default = default
         if isinstance(default, dict):
             _default = OptionResult(args=default)
-        if opt is None:
-            self.options.append(
-                Option(name, default=_default, action=action)
-            )
-            return self
+        opt_string = name if opt is None else opt
         help_text = None
-        if help_string := re.findall(r"(?: )?#(.+)$", opt):  # noqa
+        if help_string := re.findall(r"(?: )?#(.+)$", opt_string):  # noqa
             help_text = help_string[0]
-            opt = opt[: -len(help_string[0]) - 1].rstrip()
-        parts = split(opt, " ")
-        aliases = [f"--{name}"]
+            opt_string = opt_string[: -len(help_string[0]) - 1].rstrip()
+        parts = split(opt_string, " ")
+        dest = name if opt else parts[0].lstrip("-")
+        aliases = [f"--{name}" if opt else parts[0]]
         index = 0
         for part in parts:
             if part.startswith("<") or part.startswith("[") or part.startswith("#"):
@@ -580,26 +584,35 @@ class AlconnaString:
         if parts[index:]:
             custom_types = getattr(inspect.getmodule(inspect.stack()[1][0]), "__dict__", {})
             _args = self.args_gen(" ".join(parts[index:]), custom_types.copy())
-        _opt = Option("|".join(aliases), _args, dest=name, default=_default, action=action, help_text=help_text)
+        _opt = Option("|".join(aliases), _args, dest=dest, default=_default, action=action, help_text=help_text)
         self.options.append(_opt)
         return self
 
-    def subcommand(self, name: str, default: Any = Empty) -> Self:
+    def subcommand(self, name: str, opt: Optional[str] = None, default: Any = Empty) -> Self:
         """添加一个子命令
 
+        name 与 opt 有四种情况:
+        - 1. name 为子命令的实际名称, opt 为子命令的字符串, 例如 `option("bar", "baar <val:bool>")`
+        - 2. name 为子命令的实际名称, opt 为参数, 例如 `option("bar", "<val:bool>")`，此时 opt 默认为 `bar`
+        - 3. name 为子命令的实际名称, opt 为 None, 例如 `option("bar")`，此时 opt 默认为 `bar`
+        - 4. name 为子命令的字符串, opt 为 None，例如 `option("bar <val:bool>")`，此时 name 默认为 `bar`
+
         Args:
-            name (str): 子命令的名称
+            name (str): 子命令的实际名称
+            opt (Optional[str], optional): 子命令的字符串, 例如 `bar <val:bool>`.
             default (Any, optional): 子命令的默认值.
         """
         _default = default
         if isinstance(default, dict):
             _default = OptionResult(args=default)
+        opt_string = name if opt is None else opt
         help_text = None
-        if help_string := re.findall(r"(?: )#(.+)$", name):  # noqa
+        if help_string := re.findall(r"(?: )?#(.+)$", opt_string):  # noqa
             help_text = help_string[0]
-            name = name[: -len(help_string[0]) - 1].rstrip()
-        parts = split(name, " ")
-        aliases = []
+            opt_string = opt_string[: -len(help_string[0]) - 1].rstrip()
+        parts = split(opt_string, " ")
+        dest = name if opt else parts[0].lstrip("-")
+        aliases = [f"{dest}"]
         index = 0
         for part in parts:
             if part.startswith("<") or part.startswith("["):
@@ -610,7 +623,8 @@ class AlconnaString:
         if parts[index:]:
             custom_types = getattr(inspect.getmodule(inspect.stack()[1][0]), "__dict__", {})
             _args = self.args_gen(" ".join(parts[index:]), custom_types.copy())
-        _opt = Subcommand("|".join(aliases), _args, dest=name, default=_default, help_text=help_text)
+        _opt = Subcommand("|".join(aliases), _args, dest=dest, default=_default, help_text=help_text)
+        self.options.append(_opt)
         return self
 
     def usage(self, content: str) -> Self:

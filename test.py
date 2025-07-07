@@ -38,6 +38,20 @@ def test_koishi_like():
         .build()
     assert con_3.parse("test -w 123").query("writer.id") == 123
     assert con_3.parse("book --anonymous").query("writer.id") == 0
+    con4 = AlconnaString("con4")\
+        .option("foo1", "--foo1 -F1 <foo1:str>")\
+        .option("foo2", "<foo2:str>") \
+        .option("foo3") \
+        .option("--foo4 -F4 <foo4:str>")\
+        .build()
+    assert con4.options[0].dest == "foo1"
+    assert con4.options[0].aliases == {"--foo1", "-F1"}
+    assert con4.options[1].dest == "foo2"
+    assert con4.options[1].aliases == {"--foo2"}
+    assert con4.options[2].dest == "foo3"
+    assert con4.options[2].aliases == {"foo3"}
+    assert con4.options[3].dest == "foo4"
+    assert con4.options[3].aliases == {"--foo4", "-F4"}
 
 
 def test_format_like():

@@ -1,6 +1,6 @@
 [project]
 name = "arclet-alconna-tools"
-version = "0.7.10"
+version = "0.7.11"
 description = "Builtin Tools for Alconna"
 authors = [
     {name = "RF-Tar-Railt", email = "rf_tar_railt@qq.com"},
