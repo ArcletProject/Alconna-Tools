@@ -659,6 +659,7 @@ class AlconnaString:
         arguments: Optional[list] = None,
         fuzzy: bool = True,
         prefix: bool = False,
+        compact: Optional[bool] = None,
         wrapper: Optional[ShortcutRegWrapper] = None,
         humanized: Optional[str] = None,
     ) -> Self:
@@ -670,6 +671,7 @@ class AlconnaString:
             arguments (list[Any] | None, optional): 快捷命令参数, 默认为 `None`
             fuzzy (bool, optional): 是否允许命令后随参数, 默认为 `True`
             prefix (bool, optional): 是否调用时保留指令前缀, 默认为 `False`
+            compact (bool | None, optional): 是否允许快捷命令与后随参数之间不包含分隔符, 默认为 `None`
             wrapper (ShortcutRegWrapper, optional): 快捷指令的正则匹配结果的额外处理函数, 默认为 `None`
             humanized (str, optional): 快捷指令的人类可读描述, 默认为 `None`
         """
